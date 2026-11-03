@@ -1,0 +1,24 @@
+{
+  "before_snapshot": "before-structure-02",
+  "after_snapshot": "after-structure-02",
+  "chassis": {
+    "errors": 0,
+    "warnings": 0,
+    "code_delta": 0,
+    "ro_delta": 0,
+    "rw_delta": 0,
+    "zi_delta": 0
+  },
+  "gimbal": {
+    "errors": 0,
+    "warnings": 40,
+    "code_delta": 0,
+    "ro_delta": 0,
+    "rw_delta": 0,
+    "zi_delta": 0,
+    "warning_difference_count": 0
+  },
+  "runtime_checks": 42,
+  "runtime_passed": true,
+  "generator_candidate_applied": false
+}

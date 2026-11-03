@@ -1,0 +1,12 @@
+{
+  "warning_count_before": 40,
+  "warning_count_current": 40,
+  "warning_diff_count": 0,
+  "code_delta": 0,
+  "ro_delta": 0,
+  "rw_delta": 0,
+  "zi_delta": 0,
+  "source_snapshot_integrity": "OK",
+  "retained_function_bodies_identical": 483,
+  "protocol_calibration_checks_passed": 42
+}

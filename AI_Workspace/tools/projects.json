@@ -1,0 +1,11 @@
+{
+  "keil_executable": "D:/keil5/UV4/UV4.exe",
+  "cubemx_executable": "C:/Users/guyukk/AppData/Local/Programs/STM32CubeMX/STM32CubeMX.exe",
+  "projects": {
+    "gimbal": {
+      "root": ".",
+      "project": "MDK-ARM/CtrlBoard-H7_IMU.uvprojx",
+      "target": "CtrlBoard-H7_IMU"
+    }
+  }
+}

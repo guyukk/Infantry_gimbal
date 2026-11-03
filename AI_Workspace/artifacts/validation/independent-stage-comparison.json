@@ -1,0 +1,35 @@
+{
+  "before_stage": "before-independent-01",
+  "after_stage": "after-independent-01",
+  "changed_source_or_config": [
+    "AGENTS.md",
+    "README.md",
+    "User/APP/remote_control.c",
+    "User/APP/video_transmission_module.c",
+    "User/APP/video_transmission_module.h",
+    "User/Bsp/bsp_usart.c",
+    "User/Bsp/bsp_usart.h"
+  ],
+  "build_success": true,
+  "errors": [
+    0,
+    0
+  ],
+  "warnings": [
+    40,
+    40
+  ],
+  "new_warning_rows": [],
+  "removed_warning_rows": [],
+  "size_delta_bytes": {
+    "code_bytes": -512,
+    "ro_data_bytes": 0,
+    "rw_data_bytes": 0,
+    "zi_data_bytes": 0
+  },
+  "map_removed_thumb_symbols": [
+    "vtm_data_unpack",
+    "vtm_search_head"
+  ],
+  "map_added_thumb_symbols": []
+}

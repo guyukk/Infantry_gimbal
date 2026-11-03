@@ -1,0 +1,17 @@
+--- before
++++ after
+@@ -1,13 +1,5 @@
+ {
+-	if (huart->Instance == ((USART_TypeDef *) ((0x40000000UL) + 0x7800UL)))
+-	{
+-		if(RC_TYPE == 1)
+-		{
+-			vtm_data_unpack(usart7_buf, 21, &vtm_data);
+-			sbus_to_rc(remote_buff, &rc_ctrl, &remoter);
+-		}
+-	}
+-	else if (huart->Instance == ((USART_TypeDef *) (((0x40000000UL) + 0x00010000UL) + 0x1C00UL)))
++	if (huart->Instance == ((USART_TypeDef *) (((0x40000000UL) + 0x00010000UL) + 0x1C00UL)))
+ 	{
+ 		 
+ 		tfmini_uart_rx_cplt_callback(huart);

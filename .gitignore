@@ -1,0 +1,15 @@
+/AI_Workspace/snapshots/
+/AI_Workspace/cache/
+/AI_Workspace/artifacts/logs/
+/MDK-ARM/CtrlBoard-H7_IMU/
+/User/Communication/example/host/build/
+/.vscode/
+*.uvguix.*
+*.uvoptx
+*.axf
+*.hex
+*.map
+*.o
+*.crf
+*.d
+*.lst
