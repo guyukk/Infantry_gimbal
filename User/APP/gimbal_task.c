@@ -97,7 +97,7 @@ static void J_scope_gimbal_test(void);
 //云台控制所有相关数据
 gimbal_control_t gimbal_control;
 
-extern int16_t yaw_can_set_current, pitch_can_set_current, shoot_can_set_current;
+extern int16_t yaw_can_set_current, shoot_can_set_current;
 
 
 /**

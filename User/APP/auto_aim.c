@@ -277,7 +277,7 @@ void auto_aim_task(void const *pvParameters)
 				debug_vofa[0] = aim.receive.pitch;
 				debug_vofa[1] = gimbal_control.gimbal_pitch_motor.relative_angle_set;
 				debug_vofa[2] = gimbal_control.gimbal_pitch_motor.relative_angle;
-				debug_vofa[3] = gimbal_control.gimbal_pitch_motor.gimbal_motor_relative_angle_pid.out;
+				debug_vofa[3] = gimbal_control.gimbal_pitch_motor.emit_pos_set;
 				debug_vofa[4] = aim.receive.yaw;
 				debug_vofa[5] = gimbal_control.gimbal_yaw_motor.absolute_angle_set;
 				debug_vofa[6] = gimbal_control.gimbal_yaw_motor.absolute_angle;

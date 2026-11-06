@@ -68,7 +68,7 @@ static inline void DMFdbData(dm_measure_t *DM_measure, const uint8_t rx_data[8],
 
 /*
  * DJI 电机反馈数据数组
- * 索引映射: [0]~[3] 底盘 3508 / 摩擦轮 1~4; [4] yaw 6020; [5] pitch 6020; [6] trigger 2006; [7] 保留
+ * 索引映射: [0]~[3] 底盘 3508 / 摩擦轮 1~4; [4] yaw 6020; [5] 未用; [6] trigger 2006; [7] 保留
  */
 dji_measure_t DJI_MOTOR_MEASURE[8];
 
@@ -89,15 +89,6 @@ uint8_t can2_cnt = 0; // CAN2 中断回调中临时电机索引
   */
 const dji_measure_t *get_yaw_gimbal_motor_measure_point(void){
 	return &DJI_MOTOR_MEASURE[4];
-}
-
-/**
-  * @brief          返回pitch 6020电机数据指针
-  * @param[in]      none
-  * @retval         电机数据指针
-  */
-const dji_measure_t *get_pitch_gimbal_motor_measure_point(void){
-	return &DJI_MOTOR_MEASURE[5];
 }
 
 /**
@@ -537,7 +528,6 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hcan, uint32_t RxFifo0ITs)
 				case CAN_3508_M3_ID:
 				case CAN_3508_M4_ID:
 				case CAN_YAW_MOTOR_ID:
-				case CAN_PIT_MOTOR_ID:
 				case CAN_TRIGGER_MOTOR_ID:
 				{
 					// Calculate motor index from CAN ID offset
@@ -604,7 +594,6 @@ void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hcan, uint32_t RxFifo1ITs)
 				case CAN_3508_M3_ID:
 				case CAN_3508_M4_ID:
 				case CAN_YAW_MOTOR_ID:
-				case CAN_PIT_MOTOR_ID:
 				case CAN_TRIGGER_MOTOR_ID:
 				{
 					// Calculate motor index from CAN ID offset

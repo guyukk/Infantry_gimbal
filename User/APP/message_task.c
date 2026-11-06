@@ -17,7 +17,6 @@
 #include "video_transmission_module.h"
 
 
-extern gimbal_behaviour_e gimbal_behaviour;
 extern VTM_Data_t vtm_data;
 
 

@@ -63,6 +63,8 @@ typedef enum
 	GIMBAL_MOTIONLESS,
 } gimbal_behaviour_e;
 
+extern volatile gimbal_behaviour_e gimbal_behaviour;
+
 //云台行为状态机
 #define GIMBAL_SPIN_KEYBOARD  		KEY_PRESSED_OFFSET_SHIFT 
 #define GIMBAL_ZERO_KEYBOARD  		KEY_PRESSED_OFFSET_X
@@ -75,7 +77,6 @@ extern bool_t gimbal_cmd_to_shoot_stop(void);
 extern void gimbal_behavour_set(gimbal_control_t *gimbal_mode_set);
 extern void gimbal_zero_force_control(fp32 *yaw, fp32 *pitch, gimbal_control_t *gimbal_control_set);
 extern void gimbal_init_control(fp32 *yaw, fp32 *pitch, gimbal_control_t *gimbal_control_set);
-extern void gimbal_cali_control(fp32 *yaw, fp32 *pitch, gimbal_control_t *gimbal_control_set);
 extern void gimbal_absolute_angle_control(fp32 *yaw, fp32 *pitch, gimbal_control_t *gimbal_control_set);
 extern void gimbal_relative_angle_control(fp32 *yaw, fp32 *pitch, gimbal_control_t *gimbal_control_set);
 extern void gimbal_spin_control(fp32 *yaw, fp32 *pitch, gimbal_control_t *gimbal_control_set);

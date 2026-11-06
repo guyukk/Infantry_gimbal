@@ -1,0 +1,7 @@
+{
+  "status": "0x600d",
+  "checks": 26,
+  "failure": 0,
+  "scope": "gimbal source and synthetic peer frame",
+  "passed": true
+}

@@ -62,8 +62,6 @@ typedef struct
 
 typedef struct
 {
-    const dji_measure_t *gimbal_motor_measure;
-	
 	  dm_measure_t *gimbal_DM_measure;    // DM J4310 pitch
 	  fp32 emit_pos_set;                  // Pitch position target (rad), also used by MIT
 	
@@ -95,41 +93,18 @@ typedef struct
 
 typedef struct
 {
-//    fp32 max_yaw = 3.0;
-//    fp32 min_yaw = -3.0;
-//    fp32 max_pitch = 0.261750996;
-//    fp32 min_pitch = 0.82528168;
-//    uint16_t max_yaw_ecd = 0x0DE0;
-//    uint16_t min_yaw_ecd = 0x1CE5;
-//    uint16_t max_pitch_ecd = 0x19B7;
-//    uint16_t min_pitch_ecd = 0x1C36;
-	  fp32 max_yaw;
-    fp32 min_yaw;
-    fp32 max_pitch;
-    fp32 min_pitch;
-    uint16_t max_yaw_ecd;
-    uint16_t min_yaw_ecd;
-    uint16_t max_pitch_ecd;
-    uint16_t min_pitch_ecd;
-    uint8_t step;
-} gimbal_step_cali_t;
-
-
-
-typedef struct
-{
     const RC_ctrl_t *gimbal_rc_ctrl;
     const fp32 *gimbal_INT_angle_point;
     const fp32 *gimbal_INT_gyro_point;
+    const dji_measure_t *yaw_dji_measure;
     gimbal_motor_t gimbal_yaw_motor;
     gimbal_motor_t gimbal_pitch_motor;
-    gimbal_step_cali_t gimbal_cali;
 }gimbal_control_t;
 
 
 extern gimbal_control_t gimbal_control;
 
-extern int16_t yaw_can_set_current, pitch_can_set_current, shoot_can_set_current;
+extern int16_t yaw_can_set_current, shoot_can_set_current;
 //让云台保持在固定的值
 extern fp32 yaw_target ;
 extern fp32 yaw_curret ;
@@ -141,7 +116,7 @@ extern pid_type_def AIM;
 extern const gimbal_motor_t *get_yaw_motor_point(void);
 extern const gimbal_motor_t *get_pitch_motor_point(void);
 extern void gimbal_task(void const *pvParameters);
-extern void set_cali_gimbal_hook(const uint16_t yaw_offset, const uint16_t pitch_offset, const fp32 max_yaw, const fp32 min_yaw, const fp32 max_pitch, const fp32 min_pitch);
+extern void set_cali_yaw_hook(uint16_t yaw_offset, fp32 max_yaw, fp32 min_yaw);
 extern fp32 motor_ecd_to_angle_change(uint16_t ecd, uint16_t offset_ecd);
 extern void gimbal_motor_absolute_angle_control(gimbal_motor_t *gimbal_motor);
 extern void gimbal_motor_relative_angle_control(gimbal_motor_t *gimbal_motor);

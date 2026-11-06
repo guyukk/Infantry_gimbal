@@ -26,6 +26,8 @@ def harness_source():
         "gimbal_relative_angle_control"]
     control_loop = functions(read_source(ROOT / "User/gimbal/yaw_pitch_direct.c"))[
         "gimbal_control_loop"]
+    raw_to_relative = functions(read_source(ROOT / "User/gimbal/yaw_pitch_direct.c"))[
+        "pitch_dm_raw_to_relative"]
     config = read_source(ROOT / "User/ROBOT/Infantry_robot.h")
     config_names = ("YAW_CHANNEL", "PITCH_CHANNEL", "RC_DEADBAND", "YAW_RC_SEN",
                     "PITCH_RC_SEN", "YAW_MOUSE_SEN", "PITCH_MOUSE_SEN")
@@ -41,6 +43,8 @@ def harness_source():
 ''' + "\n".join(definitions) + r'''
 typedef float fp32;
 enum { GIMBAL_MOTOR_RAW = 0, GIMBAL_MOTOR_GYRO = 1, GIMBAL_MOTOR_ENCONDE = 2 };
+#define PITCH_TURN 0
+#define PITCH_DM_ZERO_OFFSET_RAD 0.0f
 typedef struct {
     struct { int16_t ch[5]; } rc;
     struct { int16_t x, y; } mouse;
@@ -58,6 +62,7 @@ typedef struct {
     const RC_ctrl_t *gimbal_rc_ctrl;
 } gimbal_control_t;
 gimbal_control_t gimbal_control;
+volatile struct { uint8_t mit_target_valid; fp32 mit_target_pos; } pitch_dm_enable_status;
 RC_ctrl_t rc_ctrl;
 struct { struct { fp32 yaw, pitch; } receive; } aim;
 #define rad_format(x) (x)
@@ -66,6 +71,8 @@ struct { struct { fp32 yaw, pitch; } receive; } aim;
 void gimbal_motor_raw_angle_control(gimbal_motor_t *motor) { (void)motor; }
 void gimbal_motor_absolute_angle_control(gimbal_motor_t *motor) { (void)motor; }
 void gimbal_motor_relative_angle_control(gimbal_motor_t *motor) { (void)motor; }
+static float pitch_dm_raw_to_relative(float raw)
+''' + raw_to_relative + r'''
 void gimbal_mode_change_control_transit(gimbal_control_t *gimbal_mode_change)
 ''' + transition + r'''
 void gimbal_relative_angle_limit(gimbal_motor_t *gimbal_motor, fp32 add)
@@ -93,37 +100,37 @@ void test_entry(void) {
     gimbal_control.gimbal_rc_ctrl = &rc_ctrl;
     pitch->last_gimbal_motor_mode = GIMBAL_MOTOR_RAW;
     pitch->gimbal_motor_mode = GIMBAL_MOTOR_ENCONDE;
-    pitch->relative_angle = 0.0f; /* current unconfigured DM feedback */
+    pitch->relative_angle = -2.45f; /* current DM feedback */
     pitch->emit_pos_set = -2.25f; /* command from RAW mode */
-    pitch->min_relative_angle = -2.5f;
-    pitch->max_relative_angle = -2.0f;
+    pitch->min_relative_angle = -2.7f;
+    pitch->max_relative_angle = -2.3f;
     yaw->last_gimbal_motor_mode = GIMBAL_MOTOR_RAW;
     yaw->gimbal_motor_mode = GIMBAL_MOTOR_ENCONDE;
     yaw->relative_angle = 0.2f;
     gimbal_mode_change_control_transit(&gimbal_control);
-    check(near(pitch->relative_angle_set, -2.25f), 1);
+    check(near(pitch->relative_angle_set, -2.45f), 1);
     check(near(yaw->relative_angle_set, 0.2f), 2);
     gimbal_relative_angle_limit(pitch, -0.00396f);
-    check(near(pitch->relative_angle_set, -2.25396f), 3);
+    check(near(pitch->relative_angle_set, -2.45396f), 3);
     gimbal_relative_angle_limit(pitch, +0.00396f);
-    check(near(pitch->relative_angle_set, -2.25f), 4);
+    check(near(pitch->relative_angle_set, -2.45f), 4);
     for (int i = 0; i < 100; ++i) gimbal_relative_angle_limit(pitch, -0.00396f);
-    check(near(pitch->relative_angle_set, -2.5f), 5);
+    check(near(pitch->relative_angle_set, -2.7f), 5);
     for (int i = 0; i < 200; ++i) gimbal_relative_angle_limit(pitch, +0.00396f);
-    check(near(pitch->relative_angle_set, -2.0f), 6);
-    pitch->relative_angle_set = -2.25f;
+    check(near(pitch->relative_angle_set, -2.3f), 6);
+    pitch->relative_angle_set = -2.45f;
     rc_ctrl.rc.ch[PITCH_CHANNEL] = 660;
     gimbal_relative_angle_control(&add_yaw, &add_pitch, &gimbal_control);
     check(near(add_pitch, 660.0f * PITCH_RC_SEN), 7);
     gimbal_relative_angle_limit(pitch, add_pitch);
     gimbal_control_loop(&gimbal_control);
-    check(near(pitch->emit_pos_set, -2.25f + 660.0f * PITCH_RC_SEN), 8);
+    check(near(pitch->emit_pos_set, -2.45f + 660.0f * PITCH_RC_SEN), 8);
     rc_ctrl.rc.ch[PITCH_CHANNEL] = -660;
     gimbal_relative_angle_control(&add_yaw, &add_pitch, &gimbal_control);
     check(near(add_pitch, -660.0f * PITCH_RC_SEN), 9);
     gimbal_relative_angle_limit(pitch, add_pitch);
     gimbal_control_loop(&gimbal_control);
-    check(near(pitch->emit_pos_set, -2.25f), 10);
+    check(near(pitch->emit_pos_set, -2.45f), 10);
     test_result.status = 0x600D;
     stop_test();
 }

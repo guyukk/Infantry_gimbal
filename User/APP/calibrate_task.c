@@ -110,6 +110,7 @@
 #include "gimbal_task.h"
 #include "can_bsp.h"
 #include "robot_param.h"
+#include "yaw_pitch_direct.h"
 #include <math.h>
 
 
@@ -226,6 +227,7 @@ uint32_t calibrate_task_stack;
 static const RC_ctrl_t *calibrate_RC;   //remote control point
 static head_cali_t     head_cali;       //head cali data
 static gimbal_cali_t   gimbal_cali;     //gimbal cali data
+static uint8_t calibration_flash_ready;
 //static imu_cali_t      accel_cali;      //accel cali data
 //static imu_cali_t      gyro_cali;       //gyro cali data
 //static imu_cali_t      mag_cali;        //mag cali data
@@ -293,8 +295,8 @@ static uint8_t pitch_dm_cali_valid_range(float min_pos, float max_pos)
 void pitch_dm_cali_load(float *min_pos, float *max_pos)
 {
     pitch_dm_cali_record_t record;
-    if (min_pos == NULL || max_pos == NULL) return;
-    flash_read(PITCH_DM_CALI_ADDR, (uint32_t *)&record, sizeof(record) / 4U);
+    if (min_pos == NULL || max_pos == NULL || !calibration_flash_ready) return;
+    if (flash_read(PITCH_DM_CALI_ADDR, (uint32_t *)&record, sizeof(record) / 4U) != 0) return;
     if (record.magic != PITCH_DM_CALI_MAGIC ||
         record.version != PITCH_DM_CALI_VERSION ||
         record.check != pitch_dm_cali_check(&record) ||
@@ -359,9 +361,14 @@ static void pitch_dm_cali_poll(void)
     min_pos = fminf(pitch_dm_cali_status.first_pos, pitch_dm_cali_status.second_pos);
     max_pos = fmaxf(pitch_dm_cali_status.first_pos, pitch_dm_cali_status.second_pos);
     if (!pitch_dm_cali_valid_range(min_pos, max_pos) ||
-        motor->fdb.pos < min_pos - 0.02f || motor->fdb.pos > max_pos + 0.02f)
+        motor->fdb.pos < min_pos || motor->fdb.pos > max_pos)
     {
         pitch_dm_cali_status.result = -4; // unsafe range or current position outside it
+        return;
+    }
+    if (!calibration_flash_ready)
+    {
+        pitch_dm_cali_status.result = -5;
         return;
     }
     record.magic = PITCH_DM_CALI_MAGIC;
@@ -375,23 +382,18 @@ static void pitch_dm_cali_poll(void)
         pitch_dm_cali_status.result = -5; // flash write failed
         return;
     }
-    flash_read(PITCH_DM_CALI_ADDR, (uint32_t *)&readback, sizeof(readback) / 4U);
-    if (memcmp(&readback, &record, sizeof(record)) != 0)
+    if (flash_read(PITCH_DM_CALI_ADDR, (uint32_t *)&readback, sizeof(readback) / 4U) != 0 ||
+        memcmp(&readback, &record, sizeof(record)) != 0)
     {
         pitch_dm_cali_status.result = -5;
         return;
     }
     taskENTER_CRITICAL();
-    gimbal_control.gimbal_pitch_motor.min_relative_angle = min_pos;
-    gimbal_control.gimbal_pitch_motor.max_relative_angle = max_pos;
-    if (gimbal_control.gimbal_pitch_motor.relative_angle_set < min_pos)
-        gimbal_control.gimbal_pitch_motor.relative_angle_set = min_pos;
-    if (gimbal_control.gimbal_pitch_motor.relative_angle_set > max_pos)
-        gimbal_control.gimbal_pitch_motor.relative_angle_set = max_pos;
-    taskEXIT_CRITICAL();
+    pitch_dm_apply_calibration(&gimbal_control, min_pos, max_pos, motor->fdb.pos);
     pitch_dm_cali_status.min_pos = min_pos;
     pitch_dm_cali_status.max_pos = max_pos;
     pitch_dm_cali_status.stored_valid = 1U;
+    taskEXIT_CRITICAL();
     pitch_dm_cali_status.captured = 0U;
     pitch_dm_cali_status.result = 2;
 }
@@ -618,7 +620,11 @@ void cali_param_init(void)
         cali_sensor[i].cali_hook = (bool_t(*)(uint32_t *, bool_t))cali_hook_fun[i];
     }
 
-    cali_data_read();
+    calibration_flash_ready = (flash_init() == 0);
+    if (calibration_flash_ready)
+    {
+        cali_data_read();
+    }
 
     for (i = 0; i < CALI_LIST_LENGHT; i++)
     {
@@ -652,12 +658,22 @@ static void cali_data_read(void)
     {
 
         //read the data in flash, 
-        cali_flash_read(FLASH_USER_ADDR + offset, cali_sensor[i].flash_buf, cali_sensor[i].flash_len);
+        if (cali_flash_read(FLASH_USER_ADDR + offset, cali_sensor[i].flash_buf, cali_sensor[i].flash_len) != 0)
+        {
+            calibration_flash_ready = 0U;
+            for (uint8_t j = 0U; j < CALI_LIST_LENGHT; j++) cali_sensor[j].cali_done = 0U;
+            return;
+        }
         
         offset += cali_sensor[i].flash_len * 4;
 
         //read the name and cali flag,
-        cali_flash_read(FLASH_USER_ADDR + offset, (uint32_t *)flash_read_buf, CALI_SENSOR_HEAD_LEGHT);
+        if (cali_flash_read(FLASH_USER_ADDR + offset, (uint32_t *)flash_read_buf, CALI_SENSOR_HEAD_LEGHT) != 0)
+        {
+            calibration_flash_ready = 0U;
+            for (uint8_t j = 0U; j < CALI_LIST_LENGHT; j++) cali_sensor[j].cali_done = 0U;
+            return;
+        }
         
         cali_sensor[i].name[0] = flash_read_buf[0];
         cali_sensor[i].name[1] = flash_read_buf[1];
@@ -688,6 +704,8 @@ static void cali_data_write(void)
 {
     uint8_t i = 0;
     uint16_t offset = 0;
+
+    if (!calibration_flash_ready) return;
 
 
     for (i = 0; i < CALI_LIST_LENGHT; i++)
@@ -826,9 +844,8 @@ static bool_t cali_gimbal_hook(uint32_t *cali, bool_t cmd)
     gimbal_cali_t *local_cali_t = (gimbal_cali_t *)cali;
     if (cmd == CALI_FUNC_CMD_INIT)
     {
-        set_cali_gimbal_hook(local_cali_t->yaw_offset, local_cali_t->pitch_offset,
-                             local_cali_t->yaw_max_angle, local_cali_t->yaw_min_angle,
-                             local_cali_t->pitch_max_angle, local_cali_t->pitch_min_angle);
+        set_cali_yaw_hook(local_cali_t->yaw_offset,
+                          local_cali_t->yaw_max_angle, local_cali_t->yaw_min_angle);
         
         return 0;
     }

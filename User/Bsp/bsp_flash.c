@@ -21,7 +21,7 @@ int8_t flash_init(void)
 //	}
 //}
 uint8_t tmp[256];
-void flash_read(uint32_t address, uint32_t *buf, uint32_t len)
+int8_t flash_read(uint32_t address, uint32_t *buf, uint32_t len)
 {
 		uint32_t byteLen = len * 4;  // 计算字节长度
 
@@ -32,15 +32,18 @@ void flash_read(uint32_t address, uint32_t *buf, uint32_t len)
         while (byteLen) 
         {
             chunk = (byteLen > 256) ? 256 : byteLen;  // 分批次读取，不超过256字节
-            OSPI_W25Qxx_ReadBuffer((uint8_t *)tmp, address + (byteLen - chunk), chunk);
+            if (OSPI_W25Qxx_ReadBuffer((uint8_t *)tmp, address + (byteLen - chunk), chunk) != OSPI_W25Qxx_OK)
+                return -1;
             memcpy((uint8_t *)buf + (byteLen - chunk), tmp, chunk);  // 拷贝数据到目标缓冲区
             byteLen -= chunk;
         }
     } 
     else 
     {
-        OSPI_W25Qxx_ReadBuffer((uint8_t *)buf, address, byteLen);  // 直接读取
+        if (OSPI_W25Qxx_ReadBuffer((uint8_t *)buf, address, byteLen) != OSPI_W25Qxx_OK)
+            return -1;
     }
+    return 0;
 }
 
 

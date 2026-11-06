@@ -49,10 +49,9 @@ typedef enum
 	CAN_6020_M3_ID = 0x207,
 	CAN_6020_M4_ID = 0x208,
 	
-	//云台的pitch,yaw,拨蛋电机
+	//云台的 yaw 与拨弹电机；0x206 旧 DJI Pitch 不再使用
 	CAN_GIMBAL_ALL_ID = 0x1FF,
 	CAN_YAW_MOTOR_ID = 0x205,
-	CAN_PIT_MOTOR_ID = 0x206,
 	CAN_TRIGGER_MOTOR_ID = 0x207,
 
 	//摩擦轮电机,和底盘电机id一致
@@ -142,7 +141,6 @@ extern void CAN_cmd_gimbal(int16_t yaw, int16_t pitch, int16_t shoot, int16_t re
 extern void CAN_cmd_friction(int16_t motor1, int16_t motor2, int16_t motor3, int16_t motor4);
 
 extern const dji_measure_t *get_yaw_gimbal_motor_measure_point(void);
-extern const dji_measure_t *get_pitch_gimbal_motor_measure_point(void);
 extern const dji_measure_t *get_trigger_motor_measure_point(void);
 extern const dji_measure_t *get_fric1_motor_measure_point(void);
 extern const dji_measure_t *get_fric2_motor_measure_point(void);

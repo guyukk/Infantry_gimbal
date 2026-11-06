@@ -97,17 +97,6 @@
 #define YAW_SPEED_PID_MAX_IOUT        			8000.0f
 
 #define FEEDFORWARD_GAIN              			0.00f
-#define PITCH_SPEED_PID_KP            			3000.0f
-#define PITCH_SPEED_PID_KI            			80.0f
-#define PITCH_SPEED_PID_KD            			0.0f
-#define PITCH_SPEED_PID_MAX_OUT       			30000.0f
-#define PITCH_SPEED_PID_MAX_IOUT      			10000.0f
-
-#define PITCH_GYRO_ABSOLUTE_PID_KP    			15.0f
-#define PITCH_GYRO_ABSOLUTE_PID_KI    			0.0f
-#define PITCH_GYRO_ABSOLUTE_PID_KD    			0.0f
-#define PITCH_GYRO_ABSOLUTE_PID_MAX_OUT  		10.0f
-#define PITCH_GYRO_ABSOLUTE_PID_MAX_IOUT 		0.0f
 				
 #define YAW_GYRO_ABSOLUTE_PID_KP      			56.0f
 #define YAW_GYRO_ABSOLUTE_PID_KI      			0.0f
@@ -115,11 +104,6 @@
 #define YAW_GYRO_ABSOLUTE_PID_MAX_OUT 			10.0f
 #define YAW_GYRO_ABSOLUTE_PID_MAX_IOUT			0.0f
 
-#define PITCH_ENCODE_RELATIVE_PID_KP				112.0f
-#define PITCH_ENCODE_RELATIVE_PID_KI				0.0f
-#define PITCH_ENCODE_RELATIVE_PID_KD				1.2f
-#define PITCH_ENCODE_RELATIVE_PID_MAX_OUT		10.0f
-#define PITCH_ENCODE_RELATIVE_PID_MAX_IOUT	0.0f
 			
 #define YAW_ENCODE_RELATIVE_PID_KP					28.0f
 #define YAW_ENCODE_RELATIVE_PID_KI					0.0f
@@ -129,7 +113,6 @@
 
 //电机输出方向取反，顺带可以解决电机颤抖的bug
 #define YAW_CURRENT_SET_POLARITY					( 1)
-#define PITCH_CURRENT_SET_POLARITY				( 1)
 
 // ========== DM J4310 pitch 电机 (MIT) 配置 ==========
 // DM 电机在 DM_MOTOR_MEASURE 数组中的索引 (0~7 对应 DM_M1~DM_M8)
@@ -148,6 +131,7 @@
 #define PITCH_MIT_KD                    0.1f
 #define PITCH_MIT_MAX_POS_STEP_RAD      0.001f
 #define PITCH_MIT_FEEDBACK_TIMEOUT_MS   100U
+#define PITCH_DM_RC_TIMEOUT_MS          100U
 // DM 电机零点偏移 (rad), 校准后填入
 #define PITCH_DM_ZERO_OFFSET_RAD        0.0f
 // 电机绝对位置尚未与云台 Pitch 机械零位对齐；校准后再启用 Yaw 陀螺仪投影。
@@ -176,18 +160,8 @@
 #define GIMBAL_INIT_ANGLE_ERROR       0.1f
 #define GIMBAL_INIT_STOP_TIME         100
 #define GIMBAL_INIT_TIME              6000
-#define GIMBAL_CALI_REDUNDANT_ANGLE   0.1f
 #define GIMBAL_INIT_PITCH_SPEED       0.004f
 #define GIMBAL_INIT_YAW_SPEED         0.005f
-#define GIMBAL_CALI_MOTOR_SET         8000
-#define GIMBAL_CALI_STEP_TIME         2000
-#define GIMBAL_CALI_GYRO_LIMIT        0.1f
-#define GIMBAL_CALI_PITCH_MAX_STEP    1
-#define GIMBAL_CALI_PITCH_MIN_STEP    2
-#define GIMBAL_CALI_YAW_MAX_STEP      3
-#define GIMBAL_CALI_YAW_MIN_STEP      4
-#define GIMBAL_CALI_START_STEP        GIMBAL_CALI_PITCH_MAX_STEP
-#define GIMBAL_CALI_END_STEP          5
 #define GIMBAL_MOTIONLESS_RC_DEADLINE 10
 #define GIMBAL_MOTIONLESS_TIME_MAX    3000
 
@@ -278,9 +252,6 @@
         gimbal_PID_clear(&(gimbal_clear)->gimbal_yaw_motor.gimbal_motor_absolute_angle_pid);                    \
         gimbal_PID_clear(&(gimbal_clear)->gimbal_yaw_motor.gimbal_motor_relative_angle_pid);                    \
         PID_clear(&(gimbal_clear)->gimbal_yaw_motor.gimbal_motor_gyro_pid);                                     \
-        gimbal_PID_clear(&(gimbal_clear)->gimbal_pitch_motor.gimbal_motor_absolute_angle_pid);                  \
-        gimbal_PID_clear(&(gimbal_clear)->gimbal_pitch_motor.gimbal_motor_relative_angle_pid);                  \
-        PID_clear(&(gimbal_clear)->gimbal_pitch_motor.gimbal_motor_gyro_pid);                                   \
     } while (0)
 
 #define SHOOT_LIMIT										230

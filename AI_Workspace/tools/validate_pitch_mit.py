@@ -29,27 +29,43 @@ typedef struct {
     struct { float P_MIN, P_MAX, V_MIN, V_MAX, KP_MIN, KP_MAX,
                    KD_MIN, KD_MAX, T_MIN, T_MAX; } param;
 } dm_measure_t;
-typedef struct { dm_measure_t *gimbal_DM_measure; float emit_pos_set; } pitch_motor_t;
-typedef struct { pitch_motor_t gimbal_pitch_motor; } gimbal_control_t;
+typedef struct { struct { int16_t ch[5]; uint8_t s[2]; } rc; uint32_t last_fdb; } RC_ctrl_t;
+typedef struct { dm_measure_t *gimbal_DM_measure; float emit_pos_set, relative_angle_set; } pitch_motor_t;
+typedef struct { pitch_motor_t gimbal_pitch_motor; RC_ctrl_t *gimbal_rc_ctrl; } gimbal_control_t;
 typedef struct {
+    uint8_t attempts, last_tx_status, confirmed, exhausted;
+    uint32_t last_attempt_tick, confirmed_feedback_tick;
     uint32_t mit_send_count, last_mit_tick;
     uint8_t last_mit_tx_status, mit_target_valid;
     float mit_target_pos;
 } pitch_dm_enable_status_t;
-enum { HAL_ERROR = 1, DM_mode = 0 };
+typedef struct { uint8_t request, captured, stored_valid; int8_t result;
+                 float first_pos, second_pos, min_pos, max_pos; } pitch_dm_cali_status_t;
+enum { HAL_ERROR = 1, DM_mode = 0, GIMBAL_ZERO_FORCE = 0,
+       GIMBAL_INIT = 1, GIMBAL_CALI = 2, GIMBAL_RELATIVE_ANGLE = 4,
+       GIMBAL_MOTIONLESS = 6, DBUS_TOE = 0 };
 #define PITCH_DM_CAN_ID 0x53
 #define PITCH_MIT_FEEDBACK_TIMEOUT_MS 100U
+#define PITCH_DM_RC_TIMEOUT_MS 100U
 #define PITCH_MIT_MAX_POS_STEP_RAD 0.001f
 #define PITCH_MIT_KP 5.0f
 #define PITCH_MIT_KD 0.1f
+#define PITCH_TURN 0
+#define PITCH_DM_ZERO_OFFSET_RAD 0.0f
+#define GIMBAL_MODE_CHANNEL 0
+#define toe_is_error(x) 0
 FDCAN_HandleTypeDef hfdcan2;
 #define GIMBAL_CAN hfdcan2
 uint8_t MOTOR_Data[8];
 volatile pitch_dm_enable_status_t pitch_dm_enable_status;
+volatile pitch_dm_cali_status_t pitch_dm_cali_status;
+int gimbal_behaviour = GIMBAL_RELATIVE_ANGLE;
+struct { uint8_t ins_flag; } INS;
 uint32_t fake_tick, last_can_id, send_count;
 dm_measure_t motor;
 gimbal_control_t control;
-struct { uint32_t status, checks, failure; } test_result;
+RC_ctrl_t rc_ctrl;
+struct { uint32_t status, checks, failure; float observed_target; } test_result;
 uint32_t HAL_GetTick(void) { return fake_tick; }
 uint8_t canx_send_data(FDCAN_HandleTypeDef *hcan, uint16_t id, uint8_t *data, uint32_t len)
 { (void)hcan; (void)data; if (len != 8) return HAL_ERROR; last_can_id = id; send_count++; return 0; }
@@ -59,6 +75,12 @@ uint8_t CAN_cmd_MIT(FDCAN_HandleTypeDef *hcan, uint16_t id, const dm_measure_t *
 ''' + can["CAN_cmd_MIT"] + r'''
 static uint8_t pitch_dm_feedback_allows_mit(const dm_measure_t *motor)
 ''' + gimbal["pitch_dm_feedback_allows_mit"] + r'''
+static float pitch_dm_raw_to_relative(float raw)
+''' + gimbal["pitch_dm_raw_to_relative"] + r'''
+static float pitch_dm_relative_to_raw(float relative)
+''' + gimbal["pitch_dm_relative_to_raw"] + r'''
+static uint8_t pitch_dm_rc_ready(const RC_ctrl_t *rc, uint32_t now)
+''' + gimbal["pitch_dm_rc_ready"] + r'''
 static uint8_t pitch_dm_send_mit(gimbal_control_t *control_send)
 ''' + gimbal["pitch_dm_send_mit"] + r'''
 void check(int condition, uint32_t number)
@@ -90,19 +112,28 @@ void test_entry(void)
           MOTOR_Data[4] == 0xff && MOTOR_Data[5] == 0xff &&
           MOTOR_Data[6] == 0xff && MOTOR_Data[7] == 0xff, 7);
     control.gimbal_pitch_motor.gimbal_DM_measure = &motor;
+    control.gimbal_rc_ctrl = &rc_ctrl;
     control.gimbal_pitch_motor.emit_pos_set = -2.25f;
     fake_tick = 1000;
     check(pitch_dm_send_mit(&control) == 0, 8);
     check(pitch_dm_enable_status.mit_target_valid == 0 &&
           near(motor.set.KP, 0.0f) && near(motor.set.KD, 0.0f) &&
           near(motor.set.TOR, 0.0f), 9);
-    motor.fdb.state = 1; motor.fdb.pos = -2.8f; motor.fdb.last_fdb_time = 999;
+    motor.fdb.state = 1; motor.fdb.pos = -2.6f; motor.fdb.last_fdb_time = 999;
+    pitch_dm_enable_status.confirmed = 1;
+    pitch_dm_cali_status.stored_valid = 1;
+    pitch_dm_cali_status.min_pos = -2.7f;
+    pitch_dm_cali_status.max_pos = -2.3f;
+    rc_ctrl.last_fdb = 999;
+    rc_ctrl.rc.s[0] = 2;
     check(pitch_dm_send_mit(&control) == 0, 10);
-    check(pitch_dm_enable_status.mit_target_valid == 1 &&
-          near(pitch_dm_enable_status.mit_target_pos, -2.799f) &&
-          near(motor.set.KP, 5.0f) && near(motor.set.KD, 0.1f), 11);
+    test_result.observed_target = pitch_dm_enable_status.mit_target_pos;
+    check(pitch_dm_enable_status.mit_target_valid == 1, 11);
+    check(near(pitch_dm_enable_status.mit_target_pos, -2.6f), 22);
+    check(near(motor.set.KP, 5.0f) && near(motor.set.KD, 0.1f), 23);
+    control.gimbal_pitch_motor.emit_pos_set = -2.25f;
     check(pitch_dm_send_mit(&control) == 0 &&
-          near(pitch_dm_enable_status.mit_target_pos, -2.798f), 12);
+          near(pitch_dm_enable_status.mit_target_pos, -2.599f), 12);
     motor.fdb.id = 3; motor.fdb.state = 5;
     check(pitch_dm_send_mit(&control) == 0 &&
           pitch_dm_enable_status.mit_target_valid == 1 &&
@@ -119,6 +150,21 @@ void test_entry(void)
     check(pitch_dm_send_mit(&control) == 0 &&
           pitch_dm_enable_status.mit_target_valid == 1 &&
           near(motor.set.KP, 5.0f), 17);
+    pitch_dm_cali_status.stored_valid = 0;
+    check(pitch_dm_send_mit(&control) == 0 &&
+          pitch_dm_enable_status.mit_target_valid == 0 && near(motor.set.KP, 0.0f), 18);
+    pitch_dm_cali_status.stored_valid = 1;
+    rc_ctrl.last_fdb = 800;
+    check(pitch_dm_send_mit(&control) == 0 && near(motor.set.KP, 0.0f), 19);
+    rc_ctrl.last_fdb = 999;
+    motor.fdb.pos = -2.8f;
+    check(pitch_dm_send_mit(&control) == 0 && near(motor.set.KP, 0.0f), 20);
+    motor.fdb.pos = -2.6f;
+    gimbal_behaviour = GIMBAL_INIT;
+    INS.ins_flag = 0;
+    check(pitch_dm_send_mit(&control) == 0 &&
+          near(pitch_dm_enable_status.mit_target_pos, -2.6f), 21);
+    gimbal_behaviour = GIMBAL_RELATIVE_ANGLE;
     fake_tick = 1200;
     check(pitch_dm_send_mit(&control) == 0 &&
           pitch_dm_enable_status.mit_target_valid == 0 &&
@@ -168,12 +214,14 @@ def run(cache, results):
 
     uc.hook_add(UC_HOOK_CODE, stop_on_breakpoint)
     uc.emu_start(entry | 1, 0, timeout=10000000, count=2000000)
-    raw = bytes(uc.mem_read(symbols["test_result"], 12))
+    raw = bytes(uc.mem_read(symbols["test_result"], 16))
     status, checks, failure = (int.from_bytes(raw[i:i + 4], "little")
                                for i in range(0, 12, 4))
+    import struct
     outcome = {"status": hex(status), "checks": checks, "failure": failure,
+               "first_target": struct.unpack("<f", raw[12:16])[0],
                "passed": status == 0x600d and failure == 0,
-               "scope": "actual MIT frame packing, range clamping, ID 0x53 feedback compatibility, fault/timeout gates and target slew"}
+               "scope": "actual MIT packing, calibrated-range startup, ID 0x53 feedback, RC/feedback/flash gates, INS hold and slew"}
     (results / "results.json").write_text(json.dumps(outcome, indent=2), encoding="utf-8")
     print(json.dumps(outcome, indent=2))
     if not outcome["passed"]:

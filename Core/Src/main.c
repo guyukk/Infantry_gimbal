@@ -80,6 +80,7 @@ void PeriphCommonClock_Config(void);
 void MX_FREERTOS_Init(void);
 /* USER CODE BEGIN PFP */
 void proto_init_from_main(void);
+void pitch_dm_params_init(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -150,6 +151,8 @@ int main(void)
   /* USER CODE BEGIN 2 */
 	tim24_timebase_init();
 	DWT_Init(480);
+	/* CAN feedback decoding must know the DM ranges before FDCAN2 starts. */
+	pitch_dm_params_init();
 	cali_param_init();
 	
 	while (BMI088_init(&hspi2, 0) != BMI088_NO_ERROR)

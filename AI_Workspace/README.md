@@ -12,6 +12,7 @@
 
 ## 当前索引
 
+- [云台初始化与 DM Pitch 清理](reports/云台初始化与DM-Pitch清理-2026-11-07.md)：本轮启动链、旧 DJI Pitch 清理、Flash 校准门控、编译与离线验证；恢复包见 `snapshots/before-gimbal-init-optimization-2026-11-06/` 与 `snapshots/after-gimbal-init-03-final-2026-11-07/`。
 - [云台运行链与僵尸代码清理](reports/云台运行链与僵尸代码清理-2026-11-06.md)：有效 Target、七任务、RC/IMU/CAN/USB/板间帧数据链及五批删减证据。
 - [删减候选与保留判定](artifacts/cleanup-2026-11-06/candidates.csv)：已删、待确认及现存功能缺口。
 - `snapshots/before-full-runtime-cleanup-2026-11-06/`、`snapshots/after-full-runtime-cleanup-01-2026-11-06/` 至 `after-full-runtime-cleanup-05-2026-11-06/`：阶段源码 ZIP、哈希、构建/MAP/警告与最终固件。

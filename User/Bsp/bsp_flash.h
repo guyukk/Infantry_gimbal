@@ -16,9 +16,10 @@
 
 /* 接口保持与原文件完全一致,地址已经乘上4了，所以 */
 extern void flash_erase_address(uint32_t address, uint16_t len);
+extern int8_t flash_init(void);
 extern int8_t flash_write_single_address(uint32_t start_address, uint32_t *buf, uint32_t len);
 extern int8_t flash_write_muli_address(uint32_t start_address, uint32_t end_address, uint32_t *buf, uint32_t len);
-extern void flash_read(uint32_t address, uint32_t *buf, uint32_t len);
+extern int8_t flash_read(uint32_t address, uint32_t *buf, uint32_t len);
 extern uint32_t ger_sector(uint32_t address);
 extern uint32_t get_next_flash_address(uint32_t address);
 
