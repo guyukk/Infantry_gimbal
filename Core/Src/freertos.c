@@ -33,7 +33,6 @@
 #include "calibrate_task.h"
 #include "message_task.h"
 #include "robot_param.h"
-#include "bsp_usb.h"
 #include "auto_aim.h"
 #include "comm_app.h"
 /* USER CODE END Includes */

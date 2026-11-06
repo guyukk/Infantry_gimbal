@@ -37,7 +37,6 @@
 #include "bsp_flash.h"
 #include "bsp_tim24.h"
 #include "bsp_usart.h"
-#include "bsp_usb.h"
 #include "bsp_vofa+.h"
 #include "BMI088driver.h"
 #include "BMI088Middleware.h"
@@ -286,9 +285,6 @@ void PeriphCommonClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-
-static void proto_port_flush(void *user) { (void)user; }
-static uint16_t proto_port_get_mtu(void *user) { (void)user; return 512; }
 
 static uint32_t proto_time_now(void *user) { (void)user; return HAL_GetTick(); }
 

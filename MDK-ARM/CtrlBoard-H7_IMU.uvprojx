@@ -1105,11 +1105,6 @@
               <FilePath>..\User\Bsp\bsp_usart.c</FilePath>
             </File>
             <File>
-              <FileName>bsp_usb.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\User\Bsp\bsp_usb.c</FilePath>
-            </File>
-            <File>
               <FileName>bsp_vofa+.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\User\Bsp\bsp_vofa+.c</FilePath>

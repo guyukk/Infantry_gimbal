@@ -1,0 +1,91 @@
+{
+  "before_stage": "before-full-runtime-cleanup-2026-11-06",
+  "after_stage": "after-full-runtime-cleanup-01-2026-11-06",
+  "changed_source_or_config": [
+    "Core/Src/main.c",
+    "USB_DEVICE/App/usbd_cdc_if.c",
+    "User/APP/auto_aim.c",
+    "User/Communication/example/device/comm_app.c"
+  ],
+  "build_success": true,
+  "errors": [
+    0,
+    0
+  ],
+  "warnings": [
+    40,
+    34
+  ],
+  "new_warning_rows": [
+    [
+      "../USB_DEVICE/App/usbd_cdc_if.c",
+      "167",
+      "177-D",
+      "function \"start_usb_tx_if_idle\"  was declared but never referenced"
+    ],
+    [
+      "../User/Communication/example/device/comm_app.c",
+      "300",
+      "223-D",
+      "function \"usb_cdc_port_bind_uproto\" declared implicitly"
+    ]
+  ],
+  "removed_warning_rows": [
+    [
+      "../Core/Src/main.c",
+      "290",
+      "177-D",
+      "function \"proto_port_flush\"  was declared but never referenced"
+    ],
+    [
+      "../Core/Src/main.c",
+      "291",
+      "177-D",
+      "function \"proto_port_get_mtu\"  was declared but never referenced"
+    ],
+    [
+      "../USB_DEVICE/App/usbd_cdc_if.c",
+      "198",
+      "177-D",
+      "function \"proto_port_write\"  was declared but never referenced"
+    ],
+    [
+      "../User/APP/auto_aim.c",
+      "205",
+      "177-D",
+      "variable \"press_r_time\"  was declared but never referenced"
+    ],
+    [
+      "../User/APP/auto_aim.c",
+      "265",
+      "550-D",
+      "variable \"orn_yaw\"  was set but never used"
+    ],
+    [
+      "../User/APP/auto_aim.c",
+      "267",
+      "550-D",
+      "variable \"orn_pitch\"  was set but never used"
+    ],
+    [
+      "../User/Communication/example/device/comm_app.c",
+      "112",
+      "177-D",
+      "function \"now_us_fallback\"  was declared but never referenced"
+    ],
+    [
+      "../User/Communication/example/device/comm_app.c",
+      "309",
+      "223-D",
+      "function \"usb_cdc_port_bind_uproto\" declared implicitly"
+    ]
+  ],
+  "size_delta_bytes": {
+    "code_bytes": -28,
+    "ro_data_bytes": 0,
+    "rw_data_bytes": -16,
+    "zi_data_bytes": 0
+  },
+  "map_removed_thumb_symbols": [],
+  "map_added_thumb_symbols": []
+}

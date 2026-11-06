@@ -202,7 +202,6 @@ void auto_aim_set(auto_aim_t *aim_set)
         return;
     }
 
-    static uint32_t press_r_time = 0;
 		static bool press_R = false, last_press_R = false;
 #if ROBOT_MODE == release
     // timeout check: if host not updated for a while, mark offline and disable auto-aim
@@ -262,10 +261,6 @@ void auto_aim_feedback_update(auto_aim_t *aim_update)
 		aim.last_fdb = HAL_GetTick();
 }
 
-static fp32 orn_yaw = 0.0f;
-
-static fp32 orn_pitch = 0.0f;
-
 void auto_aim_task(void const *pvParameters)
 {
     (void)pvParameters;
@@ -314,9 +309,6 @@ void auto_aim_apply_delta_udeg(int32_t dyaw_udeg,
 		dyaw_rad   = ((float)dyaw_udeg)   * PI / 180000000.0f;
 		dpitch_rad = ((float)dpitch_udeg) * PI / 180000000.0f;
 		
-		orn_pitch = dpitch_rad;
-		orn_yaw = dyaw_rad;
-	
     // Interpret host command directly as “需要转动的误差”（正误差 → 正向转动）
     // [SYNC_FROM_H] Host deltas now feed internal controller instead of direct motor commands
     s_auto_aim_ctrl.yaw_axis.err_rad   = dyaw_rad;

@@ -12,6 +12,9 @@
 
 ## 当前索引
 
+- [云台运行链与僵尸代码清理](reports/云台运行链与僵尸代码清理-2026-11-06.md)：有效 Target、七任务、RC/IMU/CAN/USB/板间帧数据链及五批删减证据。
+- [删减候选与保留判定](artifacts/cleanup-2026-11-06/candidates.csv)：已删、待确认及现存功能缺口。
+- `snapshots/before-full-runtime-cleanup-2026-11-06/`、`snapshots/after-full-runtime-cleanup-01-2026-11-06/` 至 `after-full-runtime-cleanup-05-2026-11-06/`：阶段源码 ZIP、哈希、构建/MAP/警告与最终固件。
 - [DM Pitch 安全位置校准](reports/Pitch-DM安全位置校准-2026-11-06.md)：两点手动采样、独立 Flash 记录、Keil Watch 操作和设备验收边界。
 - `snapshots/before-pitch-dm-calibration-2026-11-06/`、`snapshots/after-pitch-dm-calibration-2026-11-06-final/`：本次改动前后恢复包；后者包含固件、MAP、日志与哈希。
 - [Pitch 反馈状态 5 与 MIT 零力矩](reports/Pitch反馈状态5与MIT零力矩-2026-11-06.md)：记录设备 Watch 根因、`0x53` 状态字节兼容修正、编译与离线验证。
@@ -43,4 +46,4 @@
 - `snapshots/after-independent-01/`：本次删减后源码、工程配置、固件、MAP、日志与哈希。
 - `reports/history/`、`artifacts/history/`：历史时期材料，可能包含旧来源路径，只用于追溯。
 
-恢复单个文件：从指定阶段的 `gimbal-sources.zip` 提取目标路径，以 `gimbal-sha256.json` 核对，再运行 `tools/build.ps1`。大型恢复包只保存在本机；当前目录没有 Git 仓库。
+恢复单个文件：从指定阶段的 `gimbal-sources.zip` 提取目标路径，以 `gimbal-sha256.json` 核对，再运行 `tools/build.ps1`。大型恢复包只保存在本机；本目录已纳入 Git，阶段快照可用于核对和恢复本轮未提交改动。

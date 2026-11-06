@@ -141,7 +141,6 @@ extern pid_type_def AIM;
 extern const gimbal_motor_t *get_yaw_motor_point(void);
 extern const gimbal_motor_t *get_pitch_motor_point(void);
 extern void gimbal_task(void const *pvParameters);
-extern bool_t cmd_cali_gimbal_hook(uint16_t *yaw_offset, uint16_t *pitch_offset, fp32 *max_yaw, fp32 *min_yaw, fp32 *max_pitch, fp32 *min_pitch);
 extern void set_cali_gimbal_hook(const uint16_t yaw_offset, const uint16_t pitch_offset, const fp32 max_yaw, const fp32 min_yaw, const fp32 max_pitch, const fp32 min_pitch);
 extern fp32 motor_ecd_to_angle_change(uint16_t ecd, uint16_t offset_ecd);
 extern void gimbal_motor_absolute_angle_control(gimbal_motor_t *gimbal_motor);
@@ -152,7 +151,6 @@ extern void gimbal_relative_angle_limit(gimbal_motor_t *gimbal_motor, fp32 add);
 extern void gimbal_PID_init(gimbal_PID_t *pid, fp32 maxout, fp32 intergral_limit, fp32 kp, fp32 ki, fp32 kd);
 extern void gimbal_PID_clear(gimbal_PID_t *pid_clear);
 extern fp32 gimbal_PID_Calc(gimbal_PID_t *pid, fp32 get, fp32 set, fp32 error_delta);
-extern void calc_gimbal_cali(const gimbal_step_cali_t *gimbal_cali, uint16_t *yaw_offset, uint16_t *pitch_offset, fp32 *max_yaw, fp32 *min_yaw, fp32 *max_pitch, fp32 *min_pitch);
 
 
 #endif

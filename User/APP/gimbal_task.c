@@ -87,7 +87,6 @@ void gimbal_relative_angle_limit(gimbal_motor_t *gimbal_motor, fp32 add);
 void gimbal_PID_init(gimbal_PID_t *pid, fp32 maxout, fp32 intergral_limit, fp32 kp, fp32 ki, fp32 kd);
 void gimbal_PID_clear(gimbal_PID_t *pid_clear);
 fp32 gimbal_PID_Calc(gimbal_PID_t *pid, fp32 get, fp32 set, fp32 error_delta);
-void calc_gimbal_cali(const gimbal_step_cali_t *gimbal_cali, uint16_t *yaw_offset, uint16_t *pitch_offset, fp32 *max_yaw, fp32 *min_yaw, fp32 *max_pitch, fp32 *min_pitch);
 
 
 #if GIMBAL_TEST_MODE

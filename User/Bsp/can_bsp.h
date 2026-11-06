@@ -29,15 +29,12 @@ extern uint8_t							MOTOR_Data[8];
  * CAN send and receive ID
  * 注意: 枚举中存在重复值是有意为之 —— 不同 CAN 总线上不同名称的电机可能映射到相同 ID，
  * 因为它们分布在不同的物理 CAN 总线上（如 CAN_6020_M1_ID 和 CAN_YAW_MOTOR_ID 同为 0x205）。
- * DM_mode/POS_mode/SPEED_mode 是 DM 电机的 ID 偏移量，不与 DJI 电机 ID 混用。
+ * DM_mode 是当前 DM MIT 指令的 ID 偏移量，不与 DJI 电机 ID 混用。
  */
 typedef enum
 {
 	// DM 电机各模式的 ID 偏移量
 	DM_mode = 0x00,
-	POS_mode =0X100,
-	SPEED_mode = 0X200,
-	EMIT_mode = 0x300,  // 力位混控模式 (扭矩电流限幅)
 
 	//底盘板上的两条can线使用
 	CAN_3508_ALL_ID = 0x200,
@@ -157,9 +154,6 @@ extern void CAN_cmd_chassis_6020(int16_t motor1, int16_t motor2, int16_t motor3,
 extern const dji_measure_t *get_chassis_motor_measure_point(uint8_t i);
 
 extern uint8_t CAN_cmd_MIT(FDCAN_HandleTypeDef *hcan, uint16_t id, const dm_measure_t *motor);
-extern void CAN_cmd_POS(FDCAN_HandleTypeDef* hcan, uint16_t id, float _pos, float _vel);
-extern void CAN_cmd_SPEED(FDCAN_HandleTypeDef* hcan, uint16_t id, float _vel);
-extern uint8_t CAN_cmd_EMIT(FDCAN_HandleTypeDef* hcan, uint16_t id, float _pos, float _vel_limit, float _i_limit);
 
 extern void RS_MOTOR_PRE(FDCAN_HandleTypeDef *hcan,uint16_t id);
 extern void RS_Motor_MIT(FDCAN_HandleTypeDef *hcan,uint16_t id);

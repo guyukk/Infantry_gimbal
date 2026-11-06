@@ -1,0 +1,17 @@
+item,kind,decision,evidence_or_reason
+Core/Src/main.c proto_port_flush/get_mtu,unused functions,removed batch 01,only definitions; MAP removed both; live port ops supplied by usb_cdc_port_get_ops
+User/Communication/example/device/comm_app.c now_us_fallback,unused function,removed batch 01,only definition; MAP removed; live clock uses time_sync_channel_now_us
+User/APP/auto_aim.c press_r_time/orn_yaw/orn_pitch,unused state,removed batch 01,unused warnings and no reads; active err_rad assignments retained
+USB_DEVICE/App/usbd_cdc_if.c old proto_port_write and ring,unused chain,removed batches 01-02,only old writer used ring; active CDC_Transmit_HS and uproto port retained
+User/Bsp/can_bsp.c POS/SPEED/EMIT,obsolete DM protocols,removed batch 03,MIT is sole active Pitch sender; old routines absent from MAP
+User/Bsp/bsp_usb.c/.h,unused demonstration module,removed batch 04,all functions linker removed; no external callers; Keil entry and two includes removed
+User/gimbal/yaw_pitch_direct.c cmd_cali_gimbal_hook/calc_gimbal_cali,unused legacy calculation,removed batch 05,legacy GM calibration ON hook disabled; no callers; MAP removed both; stored layout retained
+User/Communication/core/CRC8_CRC16.c/.h,duplicate source,retain pending host validation,byte-identical copy in User/Controller but host CMake compiles core copy; no host C++ toolchain here
+Core/Src/main.c UART7 initialization and Core/Src/stm32h7xx_it.c IRQ,hardware path,retain unknown,application parser absent at RC_TYPE=0 but current wiring/physical purpose unknown
+Core/Src/stm32h7xx_it.c SHOOT_DETECT EXTI,hardware path,retain unknown,IRQ and HAL callback exist; physical use unconfirmed
+User/APP/detect_task.c task/init/hook,protection path,retain pending fault-chain repair,task not created but toe_is_error has active consumers; deleting changes fault semantics
+User/Bsp/bsp_rc.c and User/APP/calibrate_task.c gyro hook,calibration path,retain pending calibration review,gyro hook not linked but calibration storage and service semantics require separate decision
+User/Bsp/can_bsp.c chassis/RS helpers,unused API,retain pending interface review,MAP removes current functions but board-wide API and service/debug use not yet excluded
+User/Lib/user_lib.c OLS and other helpers,unused API,retain pending interface review,MAP removes sections but public header/host or test consumers not fully audited
+User/APP/calibrate_task.c pitch_dm_cali_load,persistence defect,needs functional fix,uncommitted pre-existing edit removed only runtime call so saved Pitch limits are not loaded on next boot
+Core/Src/freertos.c and User/Communication/example/device/comm_app.c USB init,initialization defect,needs separate behavior review,MX_USB_DEVICE_Init appears in defaultTask and comm_app_task

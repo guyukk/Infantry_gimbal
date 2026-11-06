@@ -1,0 +1,30 @@
+{
+  "before_stage": "after-full-runtime-cleanup-03-2026-11-06",
+  "after_stage": "after-full-runtime-cleanup-04-2026-11-06",
+  "changed_source_or_config": [
+    "Core/Src/freertos.c",
+    "Core/Src/main.c",
+    "MDK-ARM/CtrlBoard-H7_IMU.uvprojx",
+    "User/Bsp/bsp_usb.c",
+    "User/Bsp/bsp_usb.h"
+  ],
+  "build_success": true,
+  "errors": [
+    0,
+    0
+  ],
+  "warnings": [
+    33,
+    33
+  ],
+  "new_warning_rows": [],
+  "removed_warning_rows": [],
+  "size_delta_bytes": {
+    "code_bytes": 0,
+    "ro_data_bytes": 0,
+    "rw_data_bytes": 0,
+    "zi_data_bytes": 0
+  },
+  "map_removed_thumb_symbols": [],
+  "map_added_thumb_symbols": []
+}

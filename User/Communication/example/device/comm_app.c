@@ -105,15 +105,6 @@ static uint8_t g_referee_query_seen = 0;
 static uint8_t g_referee_force_pub = 0;
 
 /**
- * @brief          备用时间源（微秒）
- * @details        当 DWT 或高精度计时不可用时，用 HAL_GetTick 近似换算
- * @retval         当前时间戳（微秒）
- */
-static uint64_t now_us_fallback(void) {
-    return ((uint64_t)HAL_GetTick()) * 1000ULL;
-}
-
-/**
  * @brief          从时间同步通道获取当前设备时间（微秒）
  * @param[in]      user：保留（未使用）
  * @retval         当前设备时间戳（微秒）
