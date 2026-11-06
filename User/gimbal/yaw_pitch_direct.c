@@ -14,6 +14,7 @@
 #include "shoot.h"
 #include "pid.h"
 #include "auto_aim.h"
+#include "calibrate_task.h"
 
 
 //yaw和pitch的电流极性，便于调试，调试完成后应使用宏定义
@@ -22,7 +23,120 @@ int8_t pitch_cuurent_set_polarity = PITCH_CURRENT_SET_POLARITY;
 
 //发送的电机电流
 int16_t yaw_can_set_current = 0, pitch_can_set_current = 0, shoot_can_set_current = 0;
-uint8_t enable = 0;
+uint8_t enable = 1;
+volatile pitch_dm_enable_status_t pitch_dm_enable_status;
+
+static uint8_t pitch_dm_enable_ready(const dm_measure_t *measure)
+{
+    uint32_t now;
+    uint32_t retry_interval;
+    uint32_t feedback_tick;
+
+    if (measure == NULL)
+    {
+        return 0;
+    }
+
+    now = HAL_GetTick();
+    feedback_tick = measure->fdb.last_fdb_time;
+    if (feedback_tick != 0U &&
+        (int32_t)(feedback_tick - pitch_dm_enable_status.last_attempt_tick) >= 0 &&
+        measure->fdb.state == 1)
+    {
+        pitch_dm_enable_status.confirmed = 1U;
+        pitch_dm_enable_status.confirmed_feedback_tick = feedback_tick;
+    }
+
+    if (pitch_dm_enable_status.confirmed)
+    {
+        return 1U;
+    }
+
+    if (pitch_dm_enable_status.attempts >= PITCH_DM_ENABLE_MAX_ATTEMPTS)
+    {
+        pitch_dm_enable_status.exhausted = 1U;
+        return 0U;
+    }
+
+    retry_interval = (pitch_dm_enable_status.attempts == 1U) ?
+                     PITCH_DM_ENABLE_FIRST_RETRY_MS : PITCH_DM_ENABLE_RETRY_MS;
+    if ((uint32_t)(now - pitch_dm_enable_status.last_attempt_tick) >= retry_interval)
+    {
+        pitch_dm_enable_status.last_tx_status = Motor_enable(&GIMBAL_CAN, PITCH_DM_CAN_ID);
+        pitch_dm_enable_status.last_attempt_tick = now;
+        pitch_dm_enable_status.attempts++;
+    }
+
+    return 0U;
+}
+
+static uint8_t pitch_dm_feedback_allows_mit(const dm_measure_t *motor)
+{
+    if (motor->fdb.state == 1U)
+    {
+        return 1U;
+    }
+
+    // This motor uses CAN ID 0x53. Its feedback byte 0 is 0x53 while the
+    // indicator is solid green: ID bits overlap the feedback status nibble.
+    // Accept only this observed ID/status pair; all other states stay gated.
+    return (PITCH_DM_CAN_ID == 0x53U &&
+            motor->fdb.id == 3U && motor->fdb.state == 5U);
+}
+
+static uint8_t pitch_dm_send_mit(gimbal_control_t *control_send)
+{
+    dm_measure_t *motor = control_send->gimbal_pitch_motor.gimbal_DM_measure;
+    float desired;
+    float delta;
+    uint32_t now = HAL_GetTick();
+
+    if (motor == NULL)
+    {
+        return (uint8_t)HAL_ERROR;
+    }
+
+    motor->set.VEL = 0.0f;
+    motor->set.TOR = 0.0f;
+    if (motor->fdb.last_fdb_time != 0U &&
+        (uint32_t)(now - motor->fdb.last_fdb_time) <= PITCH_MIT_FEEDBACK_TIMEOUT_MS &&
+        pitch_dm_feedback_allows_mit(motor) &&
+        control_send->gimbal_pitch_motor.emit_pos_set == control_send->gimbal_pitch_motor.emit_pos_set)
+    {
+        if (!pitch_dm_enable_status.mit_target_valid)
+        {
+            // First active target starts at the measured output position.
+            pitch_dm_enable_status.mit_target_pos = motor->fdb.pos;
+            pitch_dm_enable_status.mit_target_valid = 1U;
+        }
+
+        desired = control_send->gimbal_pitch_motor.emit_pos_set;
+        if (desired > motor->param.P_MAX) desired = motor->param.P_MAX;
+        if (desired < motor->param.P_MIN) desired = motor->param.P_MIN;
+        delta = desired - pitch_dm_enable_status.mit_target_pos;
+        if (delta > PITCH_MIT_MAX_POS_STEP_RAD) delta = PITCH_MIT_MAX_POS_STEP_RAD;
+        if (delta < -PITCH_MIT_MAX_POS_STEP_RAD) delta = -PITCH_MIT_MAX_POS_STEP_RAD;
+        pitch_dm_enable_status.mit_target_pos += delta;
+
+        motor->set.POS = pitch_dm_enable_status.mit_target_pos;
+        motor->set.KP = PITCH_MIT_KP;
+        motor->set.KD = PITCH_MIT_KD;
+    }
+    else
+    {
+        // Zero stiffness and feedforward while feedback is missing or stale.
+        pitch_dm_enable_status.mit_target_valid = 0U;
+        motor->set.POS = 0.0f;
+        motor->set.KP = 0.0f;
+        motor->set.KD = 0.0f;
+    }
+
+    pitch_dm_enable_status.last_mit_tx_status =
+        CAN_cmd_MIT(&GIMBAL_CAN, PITCH_DM_CAN_ID, motor);
+    pitch_dm_enable_status.mit_send_count++;
+    pitch_dm_enable_status.last_mit_tick = now;
+    return pitch_dm_enable_status.last_mit_tx_status;
+}
 
 /**
   * @brief          发送控制电流
@@ -33,6 +147,7 @@ __attribute__((used)) void gimbal_send_cmd(gimbal_control_t *control_send)
 {
 	if(debug == 0)
 	{
+		(void)pitch_dm_enable_ready(control_send->gimbal_pitch_motor.gimbal_DM_measure);
 		yaw_can_set_current = yaw_cuurent_set_polarity * control_send->gimbal_yaw_motor.given_current;
 		pitch_can_set_current = pitch_cuurent_set_polarity * control_send->gimbal_pitch_motor.given_current;
 		
@@ -41,12 +156,9 @@ __attribute__((used)) void gimbal_send_cmd(gimbal_control_t *control_send)
 			if(toe_is_error(DBUS_TOE)){ CAN_cmd_gimbal(0, 0, 0, 0); }
 			else
 			{
-				// yaw + trigger 沿用 DJI CAN; pitch 单独走 DM EMIT
+				// yaw + trigger use DJI CAN; pitch uses DM MIT.
 				CAN_cmd_gimbal(yaw_can_set_current, 0, shoot_can_set_current, 0);
-				CAN_cmd_EMIT(&GIMBAL_CAN, PITCH_DM_CAN_ID,
-										 control_send->gimbal_pitch_motor.emit_pos_set,
-										 control_send->gimbal_pitch_motor.emit_vel_limit,
-										 control_send->gimbal_pitch_motor.emit_i_limit);
+				(void)pitch_dm_send_mit(control_send);
 			}
 		}
 	}
@@ -70,11 +182,29 @@ __attribute__((used))void gimbal_init(gimbal_control_t *init)
 	init->gimbal_pitch_motor.gimbal_motor_measure = get_pitch_gimbal_motor_measure_point();
 	// DM J4310 pitch 电机反馈指针
 	init->gimbal_pitch_motor.gimbal_DM_measure = get_dm_motor_measure_point(PITCH_DM_MOTOR_INDEX);
-	init->gimbal_pitch_motor.emit_vel_limit = PITCH_EMIT_VEL_LIMIT;
-	init->gimbal_pitch_motor.emit_i_limit = PITCH_EMIT_I_LIMIT;
+	init->gimbal_pitch_motor.gimbal_DM_measure->param.P_MIN = -PITCH_MIT_P_MAX;
+	init->gimbal_pitch_motor.gimbal_DM_measure->param.P_MAX = PITCH_MIT_P_MAX;
+	init->gimbal_pitch_motor.gimbal_DM_measure->param.V_MIN = -PITCH_MIT_V_MAX;
+	init->gimbal_pitch_motor.gimbal_DM_measure->param.V_MAX = PITCH_MIT_V_MAX;
+	init->gimbal_pitch_motor.gimbal_DM_measure->param.KP_MIN = 0.0f;
+	init->gimbal_pitch_motor.gimbal_DM_measure->param.KP_MAX = 500.0f;
+	init->gimbal_pitch_motor.gimbal_DM_measure->param.KD_MIN = 0.0f;
+	init->gimbal_pitch_motor.gimbal_DM_measure->param.KD_MAX = 5.0f;
+	init->gimbal_pitch_motor.gimbal_DM_measure->param.T_MIN = -PITCH_MIT_T_MAX;
+	init->gimbal_pitch_motor.gimbal_DM_measure->param.T_MAX = PITCH_MIT_T_MAX;
 	osDelay(100);
-	// DM J4310 电机使能（上电后需发送一次使能命令才能控制）
-	Motor_enable(&GIMBAL_CAN, PITCH_DM_CAN_ID);
+	// Preserve the initial enable attempt; later retries require fresh enabled feedback.
+	pitch_dm_enable_status.attempts = 1U;
+	pitch_dm_enable_status.confirmed = 0U;
+	pitch_dm_enable_status.exhausted = 0U;
+	pitch_dm_enable_status.confirmed_feedback_tick = 0U;
+	pitch_dm_enable_status.mit_send_count = 0U;
+	pitch_dm_enable_status.last_mit_tick = 0U;
+	pitch_dm_enable_status.last_mit_tx_status = 0xFFU;
+	pitch_dm_enable_status.mit_target_valid = 0U;
+	pitch_dm_enable_status.mit_target_pos = 0.0f;
+	pitch_dm_enable_status.last_attempt_tick = HAL_GetTick();
+	pitch_dm_enable_status.last_tx_status = Motor_enable(&GIMBAL_CAN, PITCH_DM_CAN_ID);
 	//陀螺仪数据指针获取
 	init->gimbal_INT_angle_point = get_INS_angle_point();
 	init->gimbal_INT_gyro_point = get_gyro_data_point();
@@ -98,13 +228,20 @@ __attribute__((used))void gimbal_init(gimbal_control_t *init)
 	
 		init->gimbal_pitch_motor.max_relative_angle = -2.0f;			// 0.50f
 		init->gimbal_pitch_motor.min_relative_angle = -2.5f;     //-0.45f
+	// Apply a valid DM Pitch safe-position record after defaults are established.
+	pitch_dm_cali_load(&init->gimbal_pitch_motor.min_relative_angle,
+	                   &init->gimbal_pitch_motor.max_relative_angle);
+	pitch_dm_cali_status.min_pos = init->gimbal_pitch_motor.min_relative_angle;
+	pitch_dm_cali_status.max_pos = init->gimbal_pitch_motor.max_relative_angle;
+	init->gimbal_pitch_motor.emit_pos_set =
+		(init->gimbal_pitch_motor.max_relative_angle + init->gimbal_pitch_motor.min_relative_angle) / 2.0f;
 
 	init->gimbal_yaw_motor.absolute_angle_set = init->gimbal_yaw_motor.absolute_angle;
 	init->gimbal_yaw_motor.relative_angle_set = init->gimbal_yaw_motor.relative_angle;
 	init->gimbal_yaw_motor.motor_gyro_set = init->gimbal_yaw_motor.motor_gyro;
 
 	init->gimbal_pitch_motor.absolute_angle_set = init->gimbal_pitch_motor.absolute_angle;
-	init->gimbal_pitch_motor.relative_angle_set = init->gimbal_pitch_motor.relative_angle;
+	init->gimbal_pitch_motor.relative_angle_set = init->gimbal_pitch_motor.emit_pos_set;
 	init->gimbal_pitch_motor.motor_gyro_set = init->gimbal_pitch_motor.motor_gyro;
 }
 
@@ -157,8 +294,12 @@ __attribute__((used))void gimbal_feedback_update(gimbal_control_t *feedback_upda
     feedback_update->gimbal_yaw_motor.relative_angle = motor_ecd_to_angle_change(feedback_update->gimbal_yaw_motor.gimbal_motor_measure->ecd,
                                                                                         feedback_update->gimbal_yaw_motor.offset_ecd);
 #endif
+#if PITCH_DM_YAW_GYRO_PROJECTION_ENABLE
     feedback_update->gimbal_yaw_motor.motor_gyro = arm_cos_f32(feedback_update->gimbal_pitch_motor.relative_angle) * (*(feedback_update->gimbal_INT_gyro_point + INS_GYRO_Z_ADDRESS_OFFSET)) - \
-																									 arm_sin_f32(feedback_update->gimbal_pitch_motor.relative_angle) * (*(feedback_update->gimbal_INT_gyro_point + INS_GYRO_X_ADDRESS_OFFSET));
+																	 arm_sin_f32(feedback_update->gimbal_pitch_motor.relative_angle) * (*(feedback_update->gimbal_INT_gyro_point + INS_GYRO_X_ADDRESS_OFFSET));
+#else
+    feedback_update->gimbal_yaw_motor.motor_gyro = *(feedback_update->gimbal_INT_gyro_point + INS_GYRO_Z_ADDRESS_OFFSET);
+#endif
     
 		feedback_update->gimbal_yaw_motor.radian_of_ecd = feedback_update->gimbal_yaw_motor.gimbal_motor_measure->ecd	*	MOTOR_ECD_TO_RAD;	
 
@@ -203,7 +344,8 @@ __attribute__((used))void gimbal_mode_change_control_transit(gimbal_control_t *g
     }
     else if (gimbal_mode_change->gimbal_pitch_motor.last_gimbal_motor_mode != GIMBAL_MOTOR_ENCONDE && gimbal_mode_change->gimbal_pitch_motor.gimbal_motor_mode == GIMBAL_MOTOR_ENCONDE)
     {
-        gimbal_mode_change->gimbal_pitch_motor.relative_angle_set = gimbal_mode_change->gimbal_pitch_motor.relative_angle;
+        // Keep the last Pitch position command as the starting target.
+        gimbal_mode_change->gimbal_pitch_motor.relative_angle_set = gimbal_mode_change->gimbal_pitch_motor.emit_pos_set;
     }
 
     gimbal_mode_change->gimbal_pitch_motor.last_gimbal_motor_mode = gimbal_mode_change->gimbal_pitch_motor.gimbal_motor_mode;
@@ -288,7 +430,7 @@ __attribute__((used))void gimbal_control_loop(gimbal_control_t *control_loop)
 		gimbal_motor_relative_angle_control(&control_loop->gimbal_yaw_motor);
 	}
 
-	// DM J4310 EMIT 模式: 直接将角度目标作为位置指令发送,电机内部处理跟踪
+	// DM J4310 MIT mode: map the existing Pitch angle target to p_des.
 	if (control_loop->gimbal_pitch_motor.gimbal_motor_mode == GIMBAL_MOTOR_RAW)
 	{
 		control_loop->gimbal_pitch_motor.emit_pos_set = (control_loop->gimbal_pitch_motor.max_relative_angle + control_loop->gimbal_pitch_motor.min_relative_angle) / 2.0f;

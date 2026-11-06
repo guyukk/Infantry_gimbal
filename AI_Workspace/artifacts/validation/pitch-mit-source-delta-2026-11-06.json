@@ -1,0 +1,11 @@
+{
+  "changed_count": 6,
+  "changed_files": [
+    "User/APP/gimbal_task.h",
+    "User/Bsp/can_bsp.c",
+    "User/Bsp/can_bsp.h",
+    "User/gimbal/yaw_pitch_direct.c",
+    "User/gimbal/yaw_pitch_direct.h",
+    "User/ROBOT/Infantry_robot.h"
+  ]
+}

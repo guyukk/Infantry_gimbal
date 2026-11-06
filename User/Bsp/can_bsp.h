@@ -156,15 +156,15 @@ extern void CAN_cmd_chassis(int16_t motor1, int16_t motor2, int16_t motor3, int1
 extern void CAN_cmd_chassis_6020(int16_t motor1, int16_t motor2, int16_t motor3, int16_t motor4);
 extern const dji_measure_t *get_chassis_motor_measure_point(uint8_t i);
 
-extern void CAN_cmd_MIT(FDCAN_HandleTypeDef *hcan,uint16_t id, dm_measure_t motor);
+extern uint8_t CAN_cmd_MIT(FDCAN_HandleTypeDef *hcan, uint16_t id, const dm_measure_t *motor);
 extern void CAN_cmd_POS(FDCAN_HandleTypeDef* hcan, uint16_t id, float _pos, float _vel);
 extern void CAN_cmd_SPEED(FDCAN_HandleTypeDef* hcan, uint16_t id, float _vel);
-extern void CAN_cmd_EMIT(FDCAN_HandleTypeDef* hcan, uint16_t id, float _pos, float _vel_limit, float _i_limit);
+extern uint8_t CAN_cmd_EMIT(FDCAN_HandleTypeDef* hcan, uint16_t id, float _pos, float _vel_limit, float _i_limit);
 
 extern void RS_MOTOR_PRE(FDCAN_HandleTypeDef *hcan,uint16_t id);
 extern void RS_Motor_MIT(FDCAN_HandleTypeDef *hcan,uint16_t id);
 
-extern void Motor_enable(FDCAN_HandleTypeDef *hcan, uint16_t id);
+extern uint8_t Motor_enable(FDCAN_HandleTypeDef *hcan, uint16_t id);
 extern void Motor_disable(FDCAN_HandleTypeDef *hcan, uint16_t id);
 extern void Motor_save_zero(FDCAN_HandleTypeDef *hcan, uint16_t id);
 extern void Motor_clear_err(FDCAN_HandleTypeDef *hcan, uint16_t id);

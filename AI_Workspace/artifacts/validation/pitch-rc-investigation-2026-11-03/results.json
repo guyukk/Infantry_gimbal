@@ -1,0 +1,7 @@
+{
+  "status": "0x600d",
+  "checks": 14,
+  "failure": 0,
+  "passed": true,
+  "scope": "actual enable retry and command-send bodies with synthetic feedback, remote error and HAL status"
+}

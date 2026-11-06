@@ -1,0 +1,7 @@
+{
+  "status": "0x600d",
+  "checks": 10,
+  "failure": 0,
+  "passed": true,
+  "scope": "actual pitch_dm_enable_ready body with synthetic feedback and HAL status"
+}

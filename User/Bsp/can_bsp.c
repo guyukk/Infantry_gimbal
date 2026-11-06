@@ -229,32 +229,47 @@ void CAN_cmd_friction(int16_t motor1, int16_t motor2, int16_t motor3, int16_t mo
 		canx_send_data(&FRICTION_CAN, CAN_3508_ALL_ID, shoot_can_send_data, 8);
 }
 
-/**
- * @brief  MIT模式控制帧
- * @param  hcan   CAN 句柄
- * @param  id     电机 CAN ID（实际发送 ID = id + DM_mode）
- * @param  motor  DM 电机测量结构体，含 set（目标值）和 param（限幅参数）
- */
-void CAN_cmd_MIT(FDCAN_HandleTypeDef *hcan,uint16_t id, dm_measure_t motor)
-{ 
-	uint16_t pos_tmp,vel_tmp,kp_tmp,kd_tmp,tor_tmp;
-	pos_tmp = float_to_uint(motor.set.POS, motor.param.P_MIN, motor.param.P_MAX, 16);
-	vel_tmp = float_to_uint(motor.set.VEL, motor.param.V_MIN, motor.param.V_MAX, 12);
-	kp_tmp = float_to_uint(motor.set.KP, motor.param.KP_MIN, motor.param.KP_MAX, 12);
-	kd_tmp = float_to_uint(motor.set.KD, motor.param.KD_MIN, motor.param.KD_MAX, 12);
-	tor_tmp = float_to_uint(motor.set.TOR, motor.param.T_MIN, motor.param.T_MAX, 12);
+static uint16_t dm_mit_encode(float value, float lower, float upper, uint8_t bits)
+{
+	uint32_t maximum = (1U << bits) - 1U;
+	if (value < lower) value = lower;
+	if (value > upper) value = upper;
+	return (uint16_t)((value - lower) * (float)maximum / (upper - lower));
+}
 
-	
-	MOTOR_Data[0] = (pos_tmp >> 8);
-	MOTOR_Data[1] = pos_tmp;
-	MOTOR_Data[2] = (vel_tmp >> 4);
-	MOTOR_Data[3] = ((vel_tmp&0xF)<<4)|(kp_tmp>>8);
-	MOTOR_Data[4] = kp_tmp;
-	MOTOR_Data[5] = (kd_tmp >> 4);
-	MOTOR_Data[6] = ((kd_tmp&0xF)<<4)|(tor_tmp>>8);
-	MOTOR_Data[7] = tor_tmp;
-	
-	canx_send_data(hcan, id + DM_mode, MOTOR_Data, 8);
+/** MIT frame: [p:16][v:12][Kp:12][Kd:12][t_ff:12], standard ID = motor CAN ID. */
+uint8_t CAN_cmd_MIT(FDCAN_HandleTypeDef *hcan, uint16_t id, const dm_measure_t *motor)
+{
+	uint16_t pos_tmp, vel_tmp, kp_tmp, kd_tmp, tor_tmp;
+	if (hcan == NULL || motor == NULL ||
+		!(motor->param.P_MIN < motor->param.P_MAX) ||
+		!(motor->param.V_MIN < motor->param.V_MAX) ||
+		!(motor->param.KP_MIN < motor->param.KP_MAX) ||
+		!(motor->param.KD_MIN < motor->param.KD_MAX) ||
+		!(motor->param.T_MIN < motor->param.T_MAX) ||
+		motor->set.POS != motor->set.POS || motor->set.VEL != motor->set.VEL ||
+		motor->set.KP != motor->set.KP || motor->set.KD != motor->set.KD ||
+		motor->set.TOR != motor->set.TOR)
+	{
+		return (uint8_t)HAL_ERROR;
+	}
+
+	pos_tmp = dm_mit_encode(motor->set.POS, motor->param.P_MIN, motor->param.P_MAX, 16);
+	vel_tmp = dm_mit_encode(motor->set.VEL, motor->param.V_MIN, motor->param.V_MAX, 12);
+	kp_tmp = dm_mit_encode(motor->set.KP, motor->param.KP_MIN, motor->param.KP_MAX, 12);
+	kd_tmp = dm_mit_encode(motor->set.KD, motor->param.KD_MIN, motor->param.KD_MAX, 12);
+	tor_tmp = dm_mit_encode(motor->set.TOR, motor->param.T_MIN, motor->param.T_MAX, 12);
+
+	MOTOR_Data[0] = (uint8_t)(pos_tmp >> 8);
+	MOTOR_Data[1] = (uint8_t)pos_tmp;
+	MOTOR_Data[2] = (uint8_t)(vel_tmp >> 4);
+	MOTOR_Data[3] = (uint8_t)(((vel_tmp & 0xFU) << 4) | (kp_tmp >> 8));
+	MOTOR_Data[4] = (uint8_t)kp_tmp;
+	MOTOR_Data[5] = (uint8_t)(kd_tmp >> 4);
+	MOTOR_Data[6] = (uint8_t)(((kd_tmp & 0xFU) << 4) | (tor_tmp >> 8));
+	MOTOR_Data[7] = (uint8_t)tor_tmp;
+
+	return canx_send_data(hcan, id + DM_mode, MOTOR_Data, 8);
 }
 
 /**
@@ -312,7 +327,7 @@ void CAN_cmd_SPEED(FDCAN_HandleTypeDef* hcan, uint16_t id, float _vel)
  *         v_des = clamp(_vel_limit * 100, 0, 10000)
  *         i_des = clamp(_i_limit * 10000, 0, 10000)
  */
-void CAN_cmd_EMIT(FDCAN_HandleTypeDef* hcan, uint16_t id, float _pos, float _vel_limit, float _i_limit)
+uint8_t CAN_cmd_EMIT(FDCAN_HandleTypeDef* hcan, uint16_t id, float _pos, float _vel_limit, float _i_limit)
 {
 	uint8_t *pbuf;
 	uint16_t v_des, i_des;
@@ -340,7 +355,7 @@ void CAN_cmd_EMIT(FDCAN_HandleTypeDef* hcan, uint16_t id, float _pos, float _vel
 	MOTOR_Data[6] = (i_des >> 0) & 0xFF;
 	MOTOR_Data[7] = (i_des >> 8) & 0xFF;
 
-	canx_send_data(hcan, id + EMIT_mode, MOTOR_Data, 8);
+	return canx_send_data(hcan, id + EMIT_mode, MOTOR_Data, 8);
 }
 
 /**
@@ -348,9 +363,9 @@ void CAN_cmd_EMIT(FDCAN_HandleTypeDef* hcan, uint16_t id, float _pos, float _vel
  * @param  hcan   CAN 句柄
  * @param  id     电机 ID
  */
-void Motor_enable(FDCAN_HandleTypeDef *hcan, uint16_t id)
+uint8_t Motor_enable(FDCAN_HandleTypeDef *hcan, uint16_t id)
 {
-	canx_send_data(hcan, id, MOTOR_Enable, 8);
+	return canx_send_data(hcan, id, MOTOR_Enable, 8);
 }
 
 /**
@@ -511,9 +526,9 @@ uint32_t g_can_fail_len = 0xFFFF;
  * @param  id     CAN 报文 ID（标准帧）
  * @param  data   数据缓冲区指针
  * @param  len    数据字节数（支持 0~8, 12, 16, 20, 24, 48, 64）
- * @retval 0      发送完成
+ * @retval HAL status from HAL_FDCAN_AddMessageToTxFifoQ (0 means queued)
  * @note   DLC 编码: len<=8 时直接移位; 12/16/20/24/48/64 使用 FDCAN_DLC_BYTES 宏;
- *         当前未检查 HAL_FDCAN_AddMessageToTxFifoQ 返回值。
+ *         Queued does not prove that the motor accepted or acknowledged the frame.
  */
 uint8_t canx_send_data(FDCAN_HandleTypeDef *hcan, uint16_t id, uint8_t *data, uint32_t len)
 {
@@ -563,16 +578,7 @@ uint8_t canx_send_data(FDCAN_HandleTypeDef *hcan, uint16_t id, uint8_t *data, ui
 	TxHeader.MessageMarker = 0;
 
 	// 发送CAN指令
-	//  if(HAL_FDCAN_AddMessageToTxFifoQ(hcan, &TxHeader, data) != HAL_OK)
-	//  {
-	//		// 发送失败处理
-	//		Error_Handler();
-	//  }
-
-	// 发送CAN指令
-	HAL_FDCAN_AddMessageToTxFifoQ(hcan, &TxHeader, data);
-
-	return 0;
+	return (uint8_t)HAL_FDCAN_AddMessageToTxFifoQ(hcan, &TxHeader, data);
 }
 
 /**

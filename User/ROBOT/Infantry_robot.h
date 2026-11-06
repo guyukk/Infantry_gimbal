@@ -131,17 +131,27 @@
 #define YAW_CURRENT_SET_POLARITY					( 1)
 #define PITCH_CURRENT_SET_POLARITY				( 1)
 
-// ========== DM J4310 pitch 电机 (EMIT 力位混控) 配置 ==========
+// ========== DM J4310 pitch 电机 (MIT) 配置 ==========
 // DM 电机在 DM_MOTOR_MEASURE 数组中的索引 (0~7 对应 DM_M1~DM_M8)
 #define PITCH_DM_MOTOR_INDEX            2   // DM_M3_ID = 0x53
 // DM 电机 CAN ID (与上面索引对应)
 #define PITCH_DM_CAN_ID                 DM_M3_ID
-// EMIT 模式默认速度限幅 (rad/s), 范围 [0, 100]
-#define PITCH_EMIT_VEL_LIMIT            30.0f
-// EMIT 模式默认电流限幅 (标幺值), 范围 [0.0, 1.0]
-#define PITCH_EMIT_I_LIMIT              0.8f
+#define PITCH_DM_ENABLE_FIRST_RETRY_MS  1000U
+#define PITCH_DM_ENABLE_RETRY_MS        500U
+#define PITCH_DM_ENABLE_MAX_ATTEMPTS    8U
+// 与当前电机上位机读取的 PMAX=12.5, VMAX=30, TMAX=10 一致。
+#define PITCH_MIT_P_MAX                 12.5f
+#define PITCH_MIT_V_MAX                 30.0f
+#define PITCH_MIT_T_MAX                 10.0f
+// 初始位置刚度/阻尼；上板时需结合负载整定。
+#define PITCH_MIT_KP                    5.0f
+#define PITCH_MIT_KD                    0.1f
+#define PITCH_MIT_MAX_POS_STEP_RAD      0.001f
+#define PITCH_MIT_FEEDBACK_TIMEOUT_MS   100U
 // DM 电机零点偏移 (rad), 校准后填入
 #define PITCH_DM_ZERO_OFFSET_RAD        0.0f
+// 电机绝对位置尚未与云台 Pitch 机械零位对齐；校准后再启用 Yaw 陀螺仪投影。
+#define PITCH_DM_YAW_GYRO_PROJECTION_ENABLE 0
 
 #define GIMBAL_ANGLE_Z_RC_SEN         0.000002f
 #define GIMBAL_TASK_INIT_TIME         200

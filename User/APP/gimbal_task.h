@@ -65,9 +65,7 @@ typedef struct
     const dji_measure_t *gimbal_motor_measure;
 	
 	  dm_measure_t *gimbal_DM_measure;    // DM J4310 pitch
-	  fp32 emit_pos_set;                  // EMIT pos target (rad)
-	  fp32 emit_vel_limit;                // EMIT vel limit (rad/s)
-	  fp32 emit_i_limit;                  // EMIT current limit (per-unit)
+	  fp32 emit_pos_set;                  // Pitch position target (rad), also used by MIT
 	
 	
     gimbal_PID_t gimbal_motor_absolute_angle_pid;

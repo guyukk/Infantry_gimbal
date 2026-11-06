@@ -221,6 +221,23 @@ typedef struct
   * @retval         none
   */
 extern void cali_param_init(void);
+
+// DM Pitch safe-position calibration. Set request in Keil Watch:
+// 1=capture first position, 2=capture second, 3=validate/save, 4=cancel.
+// Capture positions already inside the mechanical travel; the motor is not driven by this routine.
+typedef struct
+{
+    volatile uint8_t request;
+    volatile uint8_t captured; // bit 0: first, bit 1: second
+    volatile uint8_t stored_valid; // 1 if a valid DM range was loaded or saved
+    volatile int8_t result;     // 0 idle, 1 captured, 2 saved, negative: rejected
+    float first_pos;
+    float second_pos;
+    float min_pos;
+    float max_pos;
+} pitch_dm_cali_status_t;
+extern volatile pitch_dm_cali_status_t pitch_dm_cali_status;
+extern void pitch_dm_cali_load(float *min_pos, float *max_pos);
 /**
   * @brief          get imu control temperature, unit ℃
   * @param[in]      none

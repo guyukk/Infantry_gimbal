@@ -12,6 +12,29 @@
 
 ## 当前索引
 
+- [DM Pitch 安全位置校准](reports/Pitch-DM安全位置校准-2026-11-06.md)：两点手动采样、独立 Flash 记录、Keil Watch 操作和设备验收边界。
+- `snapshots/before-pitch-dm-calibration-2026-11-06/`、`snapshots/after-pitch-dm-calibration-2026-11-06-final/`：本次改动前后恢复包；后者包含固件、MAP、日志与哈希。
+- [Pitch 反馈状态 5 与 MIT 零力矩](reports/Pitch反馈状态5与MIT零力矩-2026-11-06.md)：记录设备 Watch 根因、`0x53` 状态字节兼容修正、编译与离线验证。
+- `snapshots/before-pitch-status53-fix-2026-11-06/`：此次修正前的源码恢复包。
+- `snapshots/after-pitch-status53-fix-2026-11-06/`：修正后完整源码、固件、MAP、HEX、日志与哈希。
+- [Yaw 抖动与 Pitch 零位耦合修正](reports/Yaw抖动与Pitch零位耦合修正-2026-11-06.md)：临时停用未校零的 Pitch 角在 Yaw 陀螺仪投影中的作用，记录原因、编译与设备复验点。
+- `snapshots/before-yaw-pitch-coupling-fix-2026-11-06/`：此次 Yaw 反馈修正前的源码恢复包。
+- `snapshots/after-yaw-pitch-coupling-fix-2026-11-06/`：修正后源码、固件、MAP、HEX、日志与哈希。
+- [Pitch 切换 MIT 协议](reports/Pitch切换MIT协议-2026-11-06.md)：按电机实测 PMAX/VMAX/TMAX 改为 MIT 命令，记录离线验证与上板观察点。
+- `snapshots/before-pitch-mit-2026-11-06/`：本次协议修改前的源码恢复包。
+- `snapshots/after-pitch-mit-2026-11-06-final/`：本次协议修改后的源码、固件、MAP、HEX、构建日志与哈希。
+- [Pitch 目标角切换修正](reports/Pitch目标角切换修正-2026-11-05.md)：根据云台板 Watch 截图修正活动模式起点，并记录离线验证。
+- `snapshots/before-pitch-target-continuity-2026-11-05/`：此次 Pitch 目标角修改前的源码恢复包。
+- `snapshots/after-pitch-target-continuity-2026-11-05/`：修正后的源码、固件、MAP、日志与哈希。
+- [Pitch 左摇杆上下排查](reports/Pitch左摇杆上下排查-2026-11-03.md)：当前代码链、1 秒使能补发、云台板 Watch 判读。
+- `snapshots/before-pitch-rc-investigation-2026-11-03/`：本次时序微调前的源码恢复包。
+- `snapshots/after-pitch-rc-investigation-2026-11-03/`：1 秒补发版本的源码、固件、MAP、日志与哈希。
+- [Pitch 绿灯无输出修正](reports/Pitch绿灯无输出修正-2026-11-03.md)：撤销反馈对控制帧的门控，保留延迟使能及新增发送状态观察。
+- `snapshots/before-pitch-output-fix-2026-11-03/`：绿灯无输出阶段的源码恢复包。
+- `snapshots/after-pitch-output-fix-2026-11-03/`：修正后的源码、固件、MAP、日志与哈希。
+- [Pitch 电机上电使能重试](reports/Pitch电机上电使能重试-2026-11-03.md)：代码修改、验证结果及上板观察项。
+- `snapshots/before-pitch-enable-2026-11-03/`：本次修改前的源码与构建恢复包。
+- `snapshots/after-pitch-enable-2026-11-03/`：本次修改后的源码、配置、固件、MAP、构建日志与哈希。
 - [独立项目收敛记录](reports/独立项目收敛-2026-11-02.md)
 - [云台架构与边界调查](reports/云台工程简化与结构整理.md)
 - [工具与恢复命令](tools/README.md)

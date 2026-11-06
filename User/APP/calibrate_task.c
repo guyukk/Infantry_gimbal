@@ -108,6 +108,9 @@
 #include "remote_control.h"
 #include "INS_task.h"
 #include "gimbal_task.h"
+#include "can_bsp.h"
+#include "robot_param.h"
+#include <math.h>
 
 
 //include head,gimbal,gyro,accel,mag. gyro,accel and mag have the same data struct. total 5(CALI_LIST_LENGHT) devices, need data lenght + 5 * 4 bytes(name[3]+cali)
@@ -249,6 +252,150 @@ void *cali_hook_fun[CALI_LIST_LENGHT] = {cali_head_hook, cali_gimbal_hook};
 
 static uint32_t calibrate_systemTick;
 
+// Separate 4 KB W25Q sector. The legacy HD/GM record at sector 0 is unchanged.
+#define PITCH_DM_CALI_ADDR 0x1000UL
+#define PITCH_DM_CALI_MAGIC 0x50444D31UL
+#define PITCH_DM_CALI_VERSION 1UL
+typedef struct
+{
+    uint32_t magic;
+    uint32_t version;
+    float min_pos;
+    float max_pos;
+    uint32_t check;
+} pitch_dm_cali_record_t;
+
+volatile pitch_dm_cali_status_t pitch_dm_cali_status;
+
+static uint32_t pitch_dm_cali_check(const pitch_dm_cali_record_t *record)
+{
+    const uint8_t *bytes = (const uint8_t *)record;
+    uint32_t crc = 0xFFFFFFFFUL;
+    uint32_t i;
+    uint8_t bit;
+    for (i = 0; i < sizeof(*record) - sizeof(record->check); i++)
+    {
+        crc ^= bytes[i];
+        for (bit = 0; bit < 8U; bit++)
+            crc = (crc >> 1) ^ ((crc & 1U) ? 0xEDB88320UL : 0U);
+    }
+    return ~crc;
+}
+
+static uint8_t pitch_dm_cali_valid_range(float min_pos, float max_pos)
+{
+    float span = max_pos - min_pos;
+    return isfinite(min_pos) && isfinite(max_pos) &&
+           min_pos > -PITCH_MIT_P_MAX && max_pos < PITCH_MIT_P_MAX &&
+           span >= 0.1f && span <= 1.5f;
+}
+
+void pitch_dm_cali_load(float *min_pos, float *max_pos)
+{
+    pitch_dm_cali_record_t record;
+    if (min_pos == NULL || max_pos == NULL) return;
+    flash_read(PITCH_DM_CALI_ADDR, (uint32_t *)&record, sizeof(record) / 4U);
+    if (record.magic != PITCH_DM_CALI_MAGIC ||
+        record.version != PITCH_DM_CALI_VERSION ||
+        record.check != pitch_dm_cali_check(&record) ||
+        !pitch_dm_cali_valid_range(record.min_pos, record.max_pos)) return;
+    *min_pos = record.min_pos;
+    *max_pos = record.max_pos;
+    pitch_dm_cali_status.min_pos = record.min_pos;
+    pitch_dm_cali_status.max_pos = record.max_pos;
+    pitch_dm_cali_status.stored_valid = 1U;
+}
+
+static void pitch_dm_cali_poll(void)
+{
+    uint8_t request = pitch_dm_cali_status.request;
+    dm_measure_t *motor;
+    float min_pos, max_pos;
+    pitch_dm_cali_record_t record;
+    pitch_dm_cali_record_t readback;
+    if (request == 0U) return;
+    pitch_dm_cali_status.request = 0U;
+    if (request == 4U)
+    {
+        pitch_dm_cali_status.captured = 0U;
+        pitch_dm_cali_status.result = 0;
+        return;
+    }
+    motor = get_dm_motor_measure_point(PITCH_DM_MOTOR_INDEX);
+    if (motor == NULL || motor->fdb.last_fdb_time == 0U ||
+        (uint32_t)(HAL_GetTick() - motor->fdb.last_fdb_time) > PITCH_MIT_FEEDBACK_TIMEOUT_MS ||
+        !((motor->fdb.state == 1U) ||
+          (PITCH_DM_CAN_ID == 0x53U && motor->fdb.id == 3U && motor->fdb.state == 5U)))
+    {
+        pitch_dm_cali_status.result = -1; // stale or unusable feedback
+        return;
+    }
+    if (request == 1U || request == 2U)
+    {
+        if (!isfinite(motor->fdb.pos) || !isfinite(motor->fdb.vel) ||
+            fabsf(motor->fdb.vel) > 0.2f)
+        {
+            pitch_dm_cali_status.result = -2; // moving or invalid position
+            return;
+        }
+        if (request == 1U)
+        {
+            pitch_dm_cali_status.first_pos = motor->fdb.pos;
+            pitch_dm_cali_status.captured |= 1U;
+        }
+        else
+        {
+            pitch_dm_cali_status.second_pos = motor->fdb.pos;
+            pitch_dm_cali_status.captured |= 2U;
+        }
+        pitch_dm_cali_status.result = 1;
+        return;
+    }
+    if (request != 3U || pitch_dm_cali_status.captured != 3U)
+    {
+        pitch_dm_cali_status.result = -3; // two samples required
+        return;
+    }
+    min_pos = fminf(pitch_dm_cali_status.first_pos, pitch_dm_cali_status.second_pos);
+    max_pos = fmaxf(pitch_dm_cali_status.first_pos, pitch_dm_cali_status.second_pos);
+    if (!pitch_dm_cali_valid_range(min_pos, max_pos) ||
+        motor->fdb.pos < min_pos - 0.02f || motor->fdb.pos > max_pos + 0.02f)
+    {
+        pitch_dm_cali_status.result = -4; // unsafe range or current position outside it
+        return;
+    }
+    record.magic = PITCH_DM_CALI_MAGIC;
+    record.version = PITCH_DM_CALI_VERSION;
+    record.min_pos = min_pos;
+    record.max_pos = max_pos;
+    record.check = pitch_dm_cali_check(&record);
+    if (flash_write_single_address(PITCH_DM_CALI_ADDR, (uint32_t *)&record,
+                                   sizeof(record) / 4U) != 0)
+    {
+        pitch_dm_cali_status.result = -5; // flash write failed
+        return;
+    }
+    flash_read(PITCH_DM_CALI_ADDR, (uint32_t *)&readback, sizeof(readback) / 4U);
+    if (memcmp(&readback, &record, sizeof(record)) != 0)
+    {
+        pitch_dm_cali_status.result = -5;
+        return;
+    }
+    taskENTER_CRITICAL();
+    gimbal_control.gimbal_pitch_motor.min_relative_angle = min_pos;
+    gimbal_control.gimbal_pitch_motor.max_relative_angle = max_pos;
+    if (gimbal_control.gimbal_pitch_motor.relative_angle_set < min_pos)
+        gimbal_control.gimbal_pitch_motor.relative_angle_set = min_pos;
+    if (gimbal_control.gimbal_pitch_motor.relative_angle_set > max_pos)
+        gimbal_control.gimbal_pitch_motor.relative_angle_set = max_pos;
+    taskEXIT_CRITICAL();
+    pitch_dm_cali_status.min_pos = min_pos;
+    pitch_dm_cali_status.max_pos = max_pos;
+    pitch_dm_cali_status.stored_valid = 1U;
+    pitch_dm_cali_status.captured = 0U;
+    pitch_dm_cali_status.result = 2;
+}
+
 
 /**
   * @brief          calibrate task, created by main function
@@ -270,6 +417,7 @@ void calibrate_task(void const *pvParameters)
     {
 
         RC_cmd_to_calibrate();
+        pitch_dm_cali_poll();
 
         for (i = 0; i < CALI_LIST_LENGHT; i++)
         {
@@ -393,7 +541,8 @@ static void RC_cmd_to_calibrate(void)
         //gimbal cali, 
         rc_action_flag = 0;
         rc_cmd_time = 0;
-        cali_sensor[CALI_GIMBAL].cali_cmd = 1;
+        // The legacy GM routine drives a DJI Pitch by raw current and reads its
+        // encoder. It must not run with the DM MIT Pitch installed.
         cali_buzzer_off();
     }
 
@@ -517,7 +666,7 @@ static void cali_data_read(void)
         
         offset += CALI_SENSOR_HEAD_LEGHT * 4;
 
-        if (cali_sensor[i].cali_done != CALIED_FLAG && cali_sensor[i].cali_hook != NULL)
+        if (i != CALI_GIMBAL && cali_sensor[i].cali_done != CALIED_FLAG && cali_sensor[i].cali_hook != NULL)
         {
             cali_sensor[i].cali_cmd = 1;
         }
@@ -685,20 +834,9 @@ static bool_t cali_gimbal_hook(uint32_t *cali, bool_t cmd)
     }
     else if (cmd == CALI_FUNC_CMD_ON)
     {
-        if (cmd_cali_gimbal_hook(&local_cali_t->yaw_offset, &local_cali_t->pitch_offset,
-                                 &local_cali_t->yaw_max_angle, &local_cali_t->yaw_min_angle,
-                                 &local_cali_t->pitch_max_angle, &local_cali_t->pitch_min_angle))
-        {
-            cali_buzzer_off();
-            
-            return 1;
-        }
-        else
-        {
-            gimbal_start_buzzer();
-            
-            return 0;
-        }
+        // The old automatic GM routine cannot calibrate a DM MIT Pitch.
+        // It must not drive the mechanism or persist its DJI encoder readings.
+        return 0;
     }
     
     return 0;

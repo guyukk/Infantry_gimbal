@@ -9,6 +9,23 @@
 
 #include "INS_task.h"
 
+typedef struct
+{
+    uint8_t attempts;
+    uint8_t last_tx_status;
+    uint8_t confirmed;
+    uint8_t exhausted;
+    uint32_t last_attempt_tick;
+    uint32_t confirmed_feedback_tick;
+    uint32_t mit_send_count;
+    uint32_t last_mit_tick;
+    uint8_t last_mit_tx_status;
+    uint8_t mit_target_valid;
+    float mit_target_pos;
+} pitch_dm_enable_status_t;
+
+extern volatile pitch_dm_enable_status_t pitch_dm_enable_status;
+
 extern void gimbal_init(gimbal_control_t *init);		
 extern void gimbal_mode_change_control_transit(gimbal_control_t *gimbal_mode_change);
 extern void gimbal_set_mode(gimbal_control_t *set_mode);
