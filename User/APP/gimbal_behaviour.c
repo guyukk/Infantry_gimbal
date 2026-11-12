@@ -223,8 +223,7 @@ void gimbal_behavour_set(gimbal_control_t *gimbal_mode_set)
 		can_change_to_GIMBAL_RELATIVE_ANGLE = true;
 	}
 	
-	//init mode, judge if gimbal is in middle place
-	//初始化模式判断是否到达中值位置
+	// INIT only waits for Pitch; Yaw holds its current angle.
 	if (gimbal_behaviour == GIMBAL_INIT)
 	{
 		static uint16_t init_time = 0;
@@ -235,8 +234,7 @@ void gimbal_behavour_set(gimbal_control_t *gimbal_mode_set)
 		}
 		init_time++;
 		
-		if ((fabs(gimbal_mode_set->gimbal_yaw_motor.relative_angle - INIT_YAW_SET) < GIMBAL_INIT_ANGLE_ERROR &&
-				 fabs(gimbal_mode_set->gimbal_pitch_motor.absolute_angle - INIT_PITCH_SET) < GIMBAL_INIT_ANGLE_ERROR))
+        if (fabs(gimbal_mode_set->gimbal_pitch_motor.absolute_angle - INIT_PITCH_SET) < GIMBAL_INIT_ANGLE_ERROR)
 		{
 			if (init_stop_time < GIMBAL_INIT_STOP_TIME)
 			{
@@ -326,7 +324,7 @@ void gimbal_zero_force_control(fp32 *yaw, fp32 *pitch, gimbal_control_t *gimbal_
 }
 
 /**
-  * @brief          云台初始化控制，电机是陀螺仪角度控制，云台先抬起pitch轴，后旋转yaw轴
+  * @brief          云台初始化控制：Pitch 到目标角，Yaw 保持当前位置
   * @author         RM
   * @param[out]     yaw轴角度控制，为角度的增量 单位 rad
   * @param[out]     pitch轴角度控制，为角度的增量 单位 rad
@@ -339,24 +337,14 @@ void gimbal_init_control(fp32 *yaw, fp32 *pitch, gimbal_control_t *gimbal_contro
     {
         return;
     }
+	*yaw = 0.0f;
 	if (!INS.ins_flag)
 	{
-		*yaw = 0.0f;
 		*pitch = 0.0f;
 		return;
 	}
 
-    //初始化状态控制量计算
-    if (fabs(INIT_PITCH_SET - gimbal_control_set->gimbal_pitch_motor.absolute_angle) > GIMBAL_INIT_ANGLE_ERROR)
-    {
-        *pitch = (INIT_PITCH_SET - gimbal_control_set->gimbal_pitch_motor.absolute_angle) * GIMBAL_INIT_PITCH_SPEED;
-        *yaw = 0.0f;
-    }
-    else
-    {
-        *pitch = (INIT_PITCH_SET - gimbal_control_set->gimbal_pitch_motor.absolute_angle) * GIMBAL_INIT_PITCH_SPEED;
-        *yaw = (INIT_YAW_SET - gimbal_control_set->gimbal_yaw_motor.relative_angle) * GIMBAL_INIT_YAW_SPEED;
-    }
+    *pitch = (INIT_PITCH_SET - gimbal_control_set->gimbal_pitch_motor.absolute_angle) * GIMBAL_INIT_PITCH_SPEED;
 }
 
 /**

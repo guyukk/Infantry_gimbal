@@ -1,0 +1,7 @@
+{
+  "status": "0x600d",
+  "checks": 19,
+  "failure": 0,
+  "passed": true,
+  "scope": "queue failures, stale confirmation recovery, ID/status compatibility, slow retry after initial budget"
+}

@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -19,6 +20,15 @@ from unicorn.arm_const import UC_ARM_REG_SP
 def harness_source():
     can = functions(read_source(ROOT / "User/Bsp/can_bsp.c"))
     gimbal = functions(read_source(ROOT / "User/gimbal/yaw_pitch_direct.c"))
+    config = read_source(ROOT / "User/ROBOT/Infantry_robot.h")
+    names = ("PITCH_MIT_MAX_POS_STEP_RAD", "PITCH_DM_LOWER_RECOVERY_RAD",
+             "PITCH_DM_RECOVERY_POS_STEP_RAD")
+    definitions = []
+    for name in names:
+        match = re.search(r"^\s*#define\s+" + name + r"\s+(\S+)", config, re.MULTILINE)
+        if not match:
+            raise RuntimeError("Missing configuration: " + name)
+        definitions.append("#define " + name + " " + match.group(1))
     return r'''
 #include <stdint.h>
 #include <stddef.h>
@@ -47,7 +57,7 @@ enum { HAL_ERROR = 1, DM_mode = 0, GIMBAL_ZERO_FORCE = 0,
 #define PITCH_DM_CAN_ID 0x53
 #define PITCH_MIT_FEEDBACK_TIMEOUT_MS 100U
 #define PITCH_DM_RC_TIMEOUT_MS 100U
-#define PITCH_MIT_MAX_POS_STEP_RAD 0.001f
+''' + "\n".join(definitions) + r'''
 #define PITCH_MIT_KP 5.0f
 #define PITCH_MIT_KD 0.1f
 #define PITCH_TURN 0
@@ -133,8 +143,14 @@ void test_entry(void)
     check(near(motor.set.KP, 5.0f) && near(motor.set.KD, 0.1f), 23);
     control.gimbal_pitch_motor.emit_pos_set = -2.25f;
     check(pitch_dm_send_mit(&control) == 0 &&
-          near(pitch_dm_enable_status.mit_target_pos, -2.599f), 12);
+          near(pitch_dm_enable_status.mit_target_pos, -2.598f), 12);
     motor.fdb.id = 3; motor.fdb.state = 5;
+    pitch_dm_enable_status.confirmed = 0;
+    pitch_dm_enable_status.attempts = 1;
+    check(pitch_dm_send_mit(&control) == 0 &&
+          pitch_dm_enable_status.mit_target_valid == 0 &&
+          near(motor.set.KP, 0.0f), 24);
+    pitch_dm_enable_status.attempts = 2;
     check(pitch_dm_send_mit(&control) == 0 &&
           pitch_dm_enable_status.mit_target_valid == 1 &&
           near(motor.set.KP, 5.0f), 14);
@@ -169,6 +185,44 @@ void test_entry(void)
     check(pitch_dm_send_mit(&control) == 0 &&
           pitch_dm_enable_status.mit_target_valid == 0 &&
           near(motor.set.KP, 0.0f) && near(motor.set.TOR, 0.0f), 13);
+    pitch_dm_cali_status.min_pos = -2.79f;
+    pitch_dm_cali_status.max_pos = -2.3f;
+    fake_tick = 1300; rc_ctrl.last_fdb = 1300;
+    motor.fdb.pos = -2.801f; motor.fdb.last_fdb_time = 1300;
+    gimbal_behaviour = GIMBAL_MOTIONLESS;
+    check(pitch_dm_send_mit(&control) == 0 &&
+          pitch_dm_enable_status.mit_target_valid == 1 &&
+          near(pitch_dm_enable_status.mit_target_pos, -2.801f) &&
+          near(motor.set.KP, 5.0f), 25);
+    float last = pitch_dm_enable_status.mit_target_pos;
+    for (int i = 0; i < 25; ++i) {
+        fake_tick++; rc_ctrl.last_fdb = fake_tick;
+        motor.fdb.last_fdb_time = fake_tick;
+        pitch_dm_send_mit(&control);
+        check(pitch_dm_enable_status.mit_target_pos >= last &&
+              pitch_dm_enable_status.mit_target_pos <= -2.79f + 0.0001f, 26);
+        last = pitch_dm_enable_status.mit_target_pos;
+    }
+    check(near(pitch_dm_enable_status.mit_target_pos, -2.79f), 27);
+    motor.fdb.pos = -2.789f;
+    fake_tick++; rc_ctrl.last_fdb = fake_tick; motor.fdb.last_fdb_time = fake_tick;
+    check(pitch_dm_send_mit(&control) == 0 &&
+          near(motor.set.POS, -2.79f), 28);
+    pitch_dm_enable_status.mit_target_valid = 0;
+    motor.fdb.pos = -2.811f;
+    fake_tick++; rc_ctrl.last_fdb = fake_tick; motor.fdb.last_fdb_time = fake_tick;
+    check(pitch_dm_send_mit(&control) == 0 &&
+          pitch_dm_enable_status.mit_target_valid == 0 &&
+          near(motor.set.KP, 0.0f), 29);
+    motor.fdb.pos = -2.801f;
+    fake_tick++; rc_ctrl.last_fdb = fake_tick; motor.fdb.last_fdb_time = fake_tick;
+    check(pitch_dm_send_mit(&control) == 0 &&
+          near(pitch_dm_enable_status.mit_target_pos, -2.801f), 30);
+    motor.fdb.pos = -2.82f;
+    fake_tick++; rc_ctrl.last_fdb = fake_tick; motor.fdb.last_fdb_time = fake_tick;
+    check(pitch_dm_send_mit(&control) == 0 &&
+          pitch_dm_enable_status.mit_target_valid == 0 &&
+          near(motor.set.KP, 0.0f), 31);
     test_result.status = 0x600d;
     stop_test();
 }
@@ -221,7 +275,7 @@ def run(cache, results):
     outcome = {"status": hex(status), "checks": checks, "failure": failure,
                "first_target": struct.unpack("<f", raw[12:16])[0],
                "passed": status == 0x600d and failure == 0,
-               "scope": "actual MIT packing, calibrated-range startup, ID 0x53 feedback, RC/feedback/flash gates, INS hold and slew"}
+               "scope": "MIT packing and enable gate; measured -2.801 recovery from -2.79 lower limit; inward-only slew, recovery window, stale feedback and normal handoff"}
     (results / "results.json").write_text(json.dumps(outcome, indent=2), encoding="utf-8")
     print(json.dumps(outcome, indent=2))
     if not outcome["passed"]:

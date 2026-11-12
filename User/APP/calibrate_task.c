@@ -228,6 +228,7 @@ static const RC_ctrl_t *calibrate_RC;   //remote control point
 static head_cali_t     head_cali;       //head cali data
 static gimbal_cali_t   gimbal_cali;     //gimbal cali data
 static uint8_t calibration_flash_ready;
+static uint8_t pitch_dm_flash_ready;
 //static imu_cali_t      accel_cali;      //accel cali data
 //static imu_cali_t      gyro_cali;       //gyro cali data
 //static imu_cali_t      mag_cali;        //mag cali data
@@ -258,6 +259,7 @@ static uint32_t calibrate_systemTick;
 #define PITCH_DM_CALI_ADDR 0x1000UL
 #define PITCH_DM_CALI_MAGIC 0x50444D31UL
 #define PITCH_DM_CALI_VERSION 1UL
+#define PITCH_DM_CALI_RETRY_MS 1000U
 typedef struct
 {
     uint32_t magic;
@@ -292,20 +294,64 @@ static uint8_t pitch_dm_cali_valid_range(float min_pos, float max_pos)
            span >= 0.1f && span <= 1.5f;
 }
 
+static uint8_t pitch_dm_cali_read_record(pitch_dm_cali_record_t *record)
+{
+    if (!pitch_dm_flash_ready)
+    {
+        pitch_dm_flash_ready = (flash_init() == 0);
+    }
+    if (!pitch_dm_flash_ready) return 0U;
+    if (flash_read(PITCH_DM_CALI_ADDR, (uint32_t *)record, sizeof(*record) / 4U) != 0)
+    {
+        pitch_dm_flash_ready = 0U;
+        return 0U;
+    }
+    return record->magic == PITCH_DM_CALI_MAGIC &&
+           record->version == PITCH_DM_CALI_VERSION &&
+           record->check == pitch_dm_cali_check(record) &&
+           pitch_dm_cali_valid_range(record->min_pos, record->max_pos);
+}
+
 void pitch_dm_cali_load(float *min_pos, float *max_pos)
 {
     pitch_dm_cali_record_t record;
-    if (min_pos == NULL || max_pos == NULL || !calibration_flash_ready) return;
-    if (flash_read(PITCH_DM_CALI_ADDR, (uint32_t *)&record, sizeof(record) / 4U) != 0) return;
-    if (record.magic != PITCH_DM_CALI_MAGIC ||
-        record.version != PITCH_DM_CALI_VERSION ||
-        record.check != pitch_dm_cali_check(&record) ||
-        !pitch_dm_cali_valid_range(record.min_pos, record.max_pos)) return;
+    if (min_pos == NULL || max_pos == NULL || !pitch_dm_cali_read_record(&record)) return;
     *min_pos = record.min_pos;
     *max_pos = record.max_pos;
     pitch_dm_cali_status.min_pos = record.min_pos;
     pitch_dm_cali_status.max_pos = record.max_pos;
     pitch_dm_cali_status.stored_valid = 1U;
+}
+
+static void pitch_dm_cali_recover(void)
+{
+    static uint32_t last_retry_tick;
+    pitch_dm_cali_record_t record;
+    dm_measure_t *motor;
+    uint32_t now = HAL_GetTick();
+
+    if (!pitch_dm_cali_status.init_done || pitch_dm_cali_status.stored_valid ||
+        pitch_dm_cali_status.request != 0U || pitch_dm_cali_status.captured != 0U ||
+        (uint32_t)(now - last_retry_tick) < PITCH_DM_CALI_RETRY_MS) return;
+    last_retry_tick = now;
+    if (!pitch_dm_cali_read_record(&record)) return;
+
+    motor = get_dm_motor_measure_point(PITCH_DM_MOTOR_INDEX);
+    if (motor == NULL || motor->fdb.last_fdb_time == 0U ||
+        (uint32_t)(now - motor->fdb.last_fdb_time) > PITCH_MIT_FEEDBACK_TIMEOUT_MS ||
+        !isfinite(motor->fdb.pos) ||
+        motor->fdb.pos < record.min_pos - PITCH_DM_LOWER_RECOVERY_RAD ||
+        motor->fdb.pos > record.max_pos) return;
+
+    // Publish limits and the current target together; the gimbal task must not
+    // see stored_valid before its position limits have been updated.
+    taskENTER_CRITICAL();
+    pitch_dm_apply_calibration(&gimbal_control, record.min_pos, record.max_pos,
+                               motor->fdb.pos);
+    pitch_dm_cali_status.min_pos = record.min_pos;
+    pitch_dm_cali_status.max_pos = record.max_pos;
+    pitch_dm_cali_status.stored_valid = 1U;
+    taskEXIT_CRITICAL();
 }
 
 static void pitch_dm_cali_poll(void)
@@ -366,11 +412,8 @@ static void pitch_dm_cali_poll(void)
         pitch_dm_cali_status.result = -4; // unsafe range or current position outside it
         return;
     }
-    if (!calibration_flash_ready)
-    {
-        pitch_dm_cali_status.result = -5;
-        return;
-    }
+    if (!pitch_dm_flash_ready) pitch_dm_flash_ready = (flash_init() == 0);
+    if (!pitch_dm_flash_ready) { pitch_dm_cali_status.result = -5; return; }
     record.magic = PITCH_DM_CALI_MAGIC;
     record.version = PITCH_DM_CALI_VERSION;
     record.min_pos = min_pos;
@@ -420,6 +463,7 @@ void calibrate_task(void const *pvParameters)
 
         RC_cmd_to_calibrate();
         pitch_dm_cali_poll();
+        pitch_dm_cali_recover();
 
         for (i = 0; i < CALI_LIST_LENGHT; i++)
         {
@@ -621,6 +665,7 @@ void cali_param_init(void)
     }
 
     calibration_flash_ready = (flash_init() == 0);
+    pitch_dm_flash_ready = calibration_flash_ready;
     if (calibration_flash_ready)
     {
         cali_data_read();

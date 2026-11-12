@@ -230,6 +230,7 @@ typedef struct
     volatile uint8_t request;
     volatile uint8_t captured; // bit 0: first, bit 1: second
     volatile uint8_t stored_valid; // 1 if a valid DM range was loaded or saved
+    volatile uint8_t init_done; // gimbal_init finished; runtime reload may apply the range
     volatile int8_t result;     // 0 idle, 1 captured, 2 saved, negative: rejected
     float first_pos;
     float second_pos;

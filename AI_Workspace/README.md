@@ -12,6 +12,11 @@
 
 ## 当前索引
 
+- [Pitch 下限外单向回收](reports/Pitch下限外单向回收-2026-11-07.md)：保留两点校准工作下限，对少量低于下限的上电位置只允许向范围内缓慢恢复。
+- [Pitch 上电自动到限位中点（已撤销）](reports/Pitch上电自动到限位中点-2026-11-07.md)：保留阶段记录与恢复包；当前固件恢复为上电保持当前位置。
+- [Yaw 初始化限幅导致回零](reports/Yaw初始化限幅导致回零-2026-11-07.md)：Flash 保存的是零偏和范围；初始化时通用限幅把目标夹到固定边界，现改为用新鲜反馈锁定当前角。
+- [Pitch 状态 5 使能回归与 Yaw 免回零](reports/Pitch状态5使能回归与Yaw免回零-2026-11-07.md)：冷上电补发使能已获用户实机确认；Yaw 的第一阶段修改仍有回零现象，见上方后续报告。
+- [DM Pitch 冷启动自动恢复](reports/Pitch冷启动自动恢复-2026-11-07.md)：前一阶段记录；Flash 校准记录恢复仍在使用，使能判定已由上方报告修正。
 - [云台初始化与 DM Pitch 清理](reports/云台初始化与DM-Pitch清理-2026-11-07.md)：本轮启动链、旧 DJI Pitch 清理、Flash 校准门控、编译与离线验证；恢复包见 `snapshots/before-gimbal-init-optimization-2026-11-06/` 与 `snapshots/after-gimbal-init-03-final-2026-11-07/`。
 - [云台运行链与僵尸代码清理](reports/云台运行链与僵尸代码清理-2026-11-06.md)：有效 Target、七任务、RC/IMU/CAN/USB/板间帧数据链及五批删减证据。
 - [删减候选与保留判定](artifacts/cleanup-2026-11-06/candidates.csv)：已删、待确认及现存功能缺口。

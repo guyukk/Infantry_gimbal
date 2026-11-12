@@ -1,0 +1,7 @@
+{
+  "status": "0x600d",
+  "checks": 18,
+  "failure": 0,
+  "passed": true,
+  "scope": "Pitch target mapping and zero legacy INS init increment; Yaw INIT waits for fresh feedback and holds outside stored limits"
+}

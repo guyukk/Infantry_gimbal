@@ -119,7 +119,7 @@
 #define PITCH_DM_MOTOR_INDEX            2   // DM_M3_ID = 0x53
 // DM 电机 CAN ID (与上面索引对应)
 #define PITCH_DM_CAN_ID                 DM_M3_ID
-#define PITCH_DM_ENABLE_FIRST_RETRY_MS  1000U
+#define PITCH_DM_ENABLE_FIRST_RETRY_MS  2000U
 #define PITCH_DM_ENABLE_RETRY_MS        500U
 #define PITCH_DM_ENABLE_MAX_ATTEMPTS    8U
 // 与当前电机上位机读取的 PMAX=12.5, VMAX=30, TMAX=10 一致。
@@ -129,7 +129,10 @@
 // 初始位置刚度/阻尼；上板时需结合负载整定。
 #define PITCH_MIT_KP                    5.0f
 #define PITCH_MIT_KD                    0.1f
-#define PITCH_MIT_MAX_POS_STEP_RAD      0.001f
+#define PITCH_MIT_MAX_POS_STEP_RAD      0.002f
+// Below the stored lower limit, allow only a short inward recovery window.
+#define PITCH_DM_LOWER_RECOVERY_RAD      0.02f
+#define PITCH_DM_RECOVERY_POS_STEP_RAD   0.0005f
 #define PITCH_MIT_FEEDBACK_TIMEOUT_MS   100U
 #define PITCH_DM_RC_TIMEOUT_MS          100U
 // DM 电机零点偏移 (rad), 校准后填入
@@ -161,12 +164,11 @@
 #define GIMBAL_INIT_STOP_TIME         100
 #define GIMBAL_INIT_TIME              6000
 #define GIMBAL_INIT_PITCH_SPEED       0.004f
-#define GIMBAL_INIT_YAW_SPEED         0.005f
+#define YAW_INIT_FEEDBACK_TIMEOUT_MS  100U
 #define GIMBAL_MOTIONLESS_RC_DEADLINE 10
 #define GIMBAL_MOTIONLESS_TIME_MAX    3000
 
 
-#define INIT_YAW_SET    0.0f
 #define INIT_PITCH_SET  0.0f
 
 #ifndef MOTOR_ECD_TO_RAD

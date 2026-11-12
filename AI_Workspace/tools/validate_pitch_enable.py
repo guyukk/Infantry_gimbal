@@ -34,6 +34,7 @@ def harness_source():
 ''' + "\n".join(definitions) + r'''
 #define PITCH_DM_CAN_ID 0x53U
 #define GIMBAL_CAN fake_can
+#define HAL_OK 0U
 typedef struct { struct { uint8_t id, state; float pos; uint32_t last_fdb_time; } fdb; } dm_measure_t;
 typedef struct {
     uint8_t attempts, last_tx_status, confirmed, exhausted;
@@ -81,45 +82,86 @@ void reset_state(void) {
 void test_entry(void) {
     dm_measure_t measure = {0};
     reset_state();
-    fake_now = 1099;
+    measure.fdb.id = 3;
+    measure.fdb.state = 5;
+    measure.fdb.last_fdb_time = 101;
+    fake_now = 101;
+    check(pitch_dm_enable_ready(&measure) == 0 &&
+          pitch_dm_enable_status.confirmed == 0, 1);
+    fake_now = 2099;
     check(pitch_dm_enable_ready(&measure) == 0 && send_count == 0, 1);
-    fake_now = 1100;
+    fake_now = 2100;
     fake_tx_status = 2;
     check(pitch_dm_enable_ready(&measure) == 0 && send_count == 1, 2);
-    check(pitch_dm_enable_status.attempts == 2 &&
+    check(pitch_dm_enable_status.attempts == 1 &&
           pitch_dm_enable_status.last_tx_status == 2 && sent_id == 0x53, 3);
-    measure.fdb.last_fdb_time = 1099;
+    fake_now = 2599;
+    check(pitch_dm_enable_ready(&measure) == 0 && send_count == 1, 4);
+    fake_now = 2600;
+    fake_tx_status = 0;
+    check(pitch_dm_enable_ready(&measure) == 0 && send_count == 2 &&
+          pitch_dm_enable_status.attempts == 2, 5);
+    measure.fdb.last_fdb_time = 2599;
     measure.fdb.state = 1;
-    fake_now = 1101;
+    fake_now = 2601;
     check(pitch_dm_enable_ready(&measure) == 0 &&
-          pitch_dm_enable_status.confirmed == 0, 4);
-    measure.fdb.last_fdb_time = 1101;
+          pitch_dm_enable_status.confirmed == 0, 6);
+    measure.fdb.last_fdb_time = 2601;
     check(pitch_dm_enable_ready(&measure) == 1 &&
-          pitch_dm_enable_status.confirmed_feedback_tick == 1101, 5);
-    fake_now = 2000;
-    check(pitch_dm_enable_ready(&measure) == 1 && send_count == 1, 6);
+          pitch_dm_enable_status.confirmed_feedback_tick == 2601, 7);
+    fake_now = 2700;
+    check(pitch_dm_enable_ready(&measure) == 1 && send_count == 2, 8);
+    fake_now = 2702;
+    pitch_dm_enable_status.mit_target_valid = 1;
+    check(pitch_dm_enable_ready(&measure) == 0 &&
+          pitch_dm_enable_status.confirmed == 0 &&
+          pitch_dm_enable_status.mit_target_valid == 0 &&
+          pitch_dm_enable_status.attempts == 0, 17);
+    fake_now = 3202;
+    check(pitch_dm_enable_ready(&measure) == 0 && send_count == 3 &&
+          pitch_dm_enable_status.attempts == 1, 18);
+    measure.fdb.last_fdb_time = 3203;
+    fake_now = 3203;
+    check(pitch_dm_enable_ready(&measure) == 1 &&
+          pitch_dm_enable_status.confirmed == 1, 19);
+    measure.fdb.state = 8;
+    measure.fdb.last_fdb_time = 3204;
+    fake_now = 3204;
+    check(pitch_dm_enable_ready(&measure) == 0 &&
+          pitch_dm_enable_status.confirmed == 0, 20);
     reset_state();
     fake_now = 1100;
     measure.fdb.id = 3;
     measure.fdb.state = 5;
     measure.fdb.last_fdb_time = 100;
-    check(pitch_dm_enable_ready(&measure) == 0, 7);
-    measure.fdb.last_fdb_time = 1101;
-    fake_now = 1101;
-    check(pitch_dm_enable_ready(&measure) == 1, 8);
+    check(pitch_dm_enable_ready(&measure) == 0, 9);
+    measure.fdb.last_fdb_time = 2100;
+    fake_now = 2100;
+    check(pitch_dm_enable_ready(&measure) == 0 &&
+          pitch_dm_enable_status.confirmed == 0 && send_count == 1, 10);
     reset_state();
     fake_now = 1101;
     measure.fdb.id = 4;
     measure.fdb.last_fdb_time = 1101;
-    check(pitch_dm_enable_ready(&measure) == 0, 9);
+    check(pitch_dm_enable_ready(&measure) == 0, 11);
     measure.fdb.id = 3;
     measure.fdb.state = 8;
-    check(pitch_dm_enable_ready(&measure) == 0, 10);
+    check(pitch_dm_enable_ready(&measure) == 0, 12);
     reset_state();
     pitch_dm_enable_status.attempts = PITCH_DM_ENABLE_MAX_ATTEMPTS;
+    fake_now = 1099;
     check(pitch_dm_enable_ready(&measure) == 0 &&
-          pitch_dm_enable_status.exhausted == 1 && send_count == 0, 11);
-    check(pitch_dm_enable_ready(NULL) == 0, 12);
+          pitch_dm_enable_status.exhausted == 1 && send_count == 0, 13);
+    fake_now = 3100;
+    check(pitch_dm_enable_ready(&measure) == 0 && send_count == 0, 14);
+    measure.fdb.id = 3;
+    measure.fdb.state = 1;
+    measure.fdb.last_fdb_time = 3101;
+    fake_now = 3101;
+    check(pitch_dm_enable_ready(&measure) == 1 &&
+          pitch_dm_enable_status.confirmed == 1 &&
+          pitch_dm_enable_status.exhausted == 0, 15);
+    check(pitch_dm_enable_ready(NULL) == 0, 16);
     test_result.status = 0x600D;
     stop_test();
 }
@@ -168,7 +210,7 @@ def run(cache, results):
     values = [int.from_bytes(raw[i:i + 4], "little") for i in range(0, 12, 4)]
     outcome = {"status": hex(values[0]), "checks": values[1], "failure": values[2],
                "passed": values[0] == 0x600D and values[2] == 0,
-               "scope": "active enable retry, fresh feedback, ID/status compatibility, retry exhaustion"}
+               "scope": "2-second retry, ambiguous state 5 cannot confirm, queue failures, stale state recovery, finite retry budget"}
     (results / "results.json").write_text(json.dumps(outcome, indent=2), encoding="utf-8")
     (results / source.name).write_bytes(source.read_bytes())
     print(json.dumps(outcome, indent=2))
