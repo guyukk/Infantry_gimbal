@@ -1,0 +1,7 @@
+{
+  "status": "0x600d",
+  "checks": 18,
+  "failure": 0,
+  "passed": true,
+  "scope": "Pitch target mapping; Yaw INIT waits for fresh feedback, holds current angle outside stored limits, and zeros current on stale feedback"
+}

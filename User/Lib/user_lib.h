@@ -96,7 +96,8 @@ typedef struct
     float frame_period; //时间间隔
 } ramp_function_source_t;
 
-typedef __packed struct
+#pragma pack(push, 1)
+typedef struct
 {
     uint16_t Order;
     uint32_t Count;
@@ -111,14 +112,17 @@ typedef __packed struct
 
     float t[4];
 } Ordinary_Least_Squares_t;
+#pragma pack(pop)
 
-typedef __packed struct
+#pragma pack(push, 1)
+typedef struct
 {
     fp32 input;        //输入数据
     fp32 out;          //滤波输出的数据
     fp32 num[1];       //滤波参数
     fp32 frame_period; //滤波的时间间隔 单位 s
 } first_order_filter_type_t;
+#pragma pack(pop)
 
 
 //一阶滤波初始化

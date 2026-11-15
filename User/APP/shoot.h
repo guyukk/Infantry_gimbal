@@ -86,5 +86,7 @@ extern shoot_control_t shoot_control;
 //由于射击和云台使用同一个can的id，故射击任务在云台任务中执行
 extern void shoot_init(void);
 extern int16_t shoot_control_loop(void);
+void shoot_safety_reset(void);
+void shoot_history_reset(void);
 
 #endif

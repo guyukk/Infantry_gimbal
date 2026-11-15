@@ -1,105 +1,11 @@
-/**
-  ****************************(C) COPYRIGHT 2019 DJI****************************
-  * @file       calibrate_task.c/h
-  * @brief      calibrate these device，include gimbal, gyro, accel, magnetometer,
-  *             chassis. gimbal calibration is to calc the midpoint, max/min 
-  *             relative angle. gyro calibration is to calc the zero drift.
-  *             accel and mag calibration have not been implemented yet, because
-  *             accel is not necessary to calibrate, mag is not used. chassis 
-  *             calibration is to make motor 3508 enter quick reset ID mode.
-  *             校准设备，包括云台,陀螺仪,加速度计,磁力计,底盘.云台校准是主要计算零点
-  *             和最大最小相对角度.云台校准是主要计算零漂.加速度计和磁力计校准还没有实现
-  *             因为加速度计还没有必要去校准,而磁力计还没有用.底盘校准是使M3508进入快速
-  *             设置ID模式.
-  * @note       
-  * @history
-  *  Version    Date            Author          Modification
-  *  V1.0.0     Oct-25-2018     RM              1. done
-  *  V1.1.0     Nov-11-2019     RM              1. add chassis clabration
-  *
-  @verbatim
-  ==============================================================================
-  *             use the remote control begin calibrate,
-  *             first: two switchs of remote control are down
-  *             second:hold for 2 seconds, two rockers set to V, like \../;  \. means the letf rocker go bottom right.
-  *             third:hold for 2 seconds, two rockers set to ./\., begin the gyro calibration
-  *                     or set to '\/', begin the gimbal calibration
-  *                     or set to /''\, begin the chassis calibration
-  *
-  *             data in flash, include cali data and name[3] and cali_flag
-  *             for example, head_cali has 8 bytes, and it need 12 bytes in flash. if it starts in 0x080A0000
-  *             0x080A0000-0x080A0007: head_cali data
-  *             0x080A0008: name[0]
-  *             0x080A0009: name[1]
-  *             0x080A000A: name[2]
-  *             0x080A000B: cali_flag, when cali_flag == 0x55, means head_cali has been calibrated.
-  *             if add a sensor
-  *             1.add cail sensro name in cali_id_e at calibrate_task.h, like
-  *             typedef enum
-  *             {
-  *                 ...
-  *                 //add more...
-  *                 CALI_XXX,
-  *                 CALI_LIST_LENGHT,
-  *             } cali_id_e;
-  *             2. add the new data struct in calibrate_task.h, must be 4 four-byte mulitple  like
-  *
-  *             typedef struct
-  *             {
-  *                 uint16_t xxx;
-  *                 uint16_t yyy;
-  *                 fp32 zzz;
-  *             } xxx_cali_t; //size: 8 bytes, must be 4, 8, 12, 16...
-  *             3.in "FLASH_WRITE_BUF_LENGHT", add "sizeof(xxx_cali_t)", and implement new function.
-  *             bool_t cali_xxx_hook(uint32_t *cali, bool_t cmd), and add the name in "cali_name[CALI_LIST_LENGHT][3]"
-  *             and declare variable xxx_cali_t xxx_cail, add the data address in cali_sensor_buf[CALI_LIST_LENGHT]
-  *             and add the data lenght in cali_sensor_size, at last, add function in cali_hook_fun[CALI_LIST_LENGHT]
-  *             使用遥控器进行开始校准
-  *             第一步:遥控器的两个开关都打到下
-  *             第二步:两个摇杆打成\../,保存两秒.\.代表左摇杆向右下打.
-  *             第三步:摇杆打成./\. 开始陀螺仪校准
-  *                    或者摇杆打成'\/' 开始云台校准
-  *                    或者摇杆打成/''\ 开始底盘校准
-  *
-  *             数据在flash中，包括校准数据和名字 name[3] 和 校准标志位 cali_flag
-  *             例如head_cali有八个字节,但它需要12字节在flash,如果它从0x080A0000开始
-  *             0x080A0000-0x080A0007: head_cali数据
-  *             0x080A0008: 名字name[0]
-  *             0x080A0009: 名字name[1]
-  *             0x080A000A: 名字name[2]
-  *             0x080A000B: 校准标志位 cali_flag,当校准标志位为0x55,意味着head_cali已经校准了
-  *             添加新设备
-  *             1.添加设备名在calibrate_task.h的cali_id_e, 像
-  *             typedef enum
-  *             {
-  *                 ...
-  *                 //add more...
-  *                 CALI_XXX,
-  *                 CALI_LIST_LENGHT,
-  *             } cali_id_e;
-  *             2. 添加数据结构在 calibrate_task.h, 必须4字节倍数，像
-  *
-  *             typedef struct
-  *             {
-  *                 uint16_t xxx;
-  *                 uint16_t yyy;
-  *                 fp32 zzz;
-  *             } xxx_cali_t; //长度:8字节 8 bytes, 必须是 4, 8, 12, 16...
-  *             3.在 "FLASH_WRITE_BUF_LENGHT",添加"sizeof(xxx_cali_t)", 和实现新函数
-  *             bool_t cali_xxx_hook(uint32_t *cali, bool_t cmd), 添加新名字在 "cali_name[CALI_LIST_LENGHT][3]"
-  *             和申明变量 xxx_cali_t xxx_cail, 添加变量地址在cali_sensor_buf[CALI_LIST_LENGHT]
-  *             在cali_sensor_size[CALI_LIST_LENGHT]添加数据长度, 最后在cali_hook_fun[CALI_LIST_LENGHT]添加函数
-  *
-  ==============================================================================
-  @endverbatim
-  ****************************(C) COPYRIGHT 2019 DJI****************************
-  */
-
-
+/* H723 calibration: W25Q sector 0 HD/GM legacy records; DM Pitch v1 at 0x1000.
+ * Only historical Yaw load and Watch-driven Pitch two-point calibration are active.
+ * No legacy stick-driven automatic end-stop or gyro calibration is available. */
 #ifndef CALIBRATE_TASK_H
 #define CALIBRATE_TASK_H
 
 #include "struct_typedef.h"
+#include <stddef.h>
 
 //when imu is calibrating ,buzzer set frequency and strength. 当imu在校准,蜂鸣器的设置频率和强度
 #define imu_start_buzzer()          buzzer_on(95, 10000)    
@@ -172,7 +78,8 @@ typedef enum
 } cali_id_e;
 
 
-typedef  __packed struct
+#pragma pack(push, 1)
+typedef  struct
 {
     uint8_t name[3];                                    //device name
     uint8_t cali_done;                                  //0x55 means has been calibrated
@@ -181,9 +88,11 @@ typedef  __packed struct
     uint32_t *flash_buf;                                //link to device calibration data
     bool_t (*cali_hook)(uint32_t *point, bool_t cmd);   //cali function
 } cali_sensor_t;
+#pragma pack(pop)
 
 //header device
-typedef  __packed struct
+#pragma pack(push, 1)
+typedef  struct
 {
     uint8_t self_id;            // the "SELF_ID"
     uint16_t firmware_version;  // set to the "FIRMWARE_VERSION"
@@ -192,6 +101,7 @@ typedef  __packed struct
     int8_t temperature;         // imu control temperature
     fp32 latitude;              // latitude
 } head_cali_t;
+#pragma pack(pop)
 //gimbal device
 typedef struct
 {
@@ -222,6 +132,20 @@ typedef struct
   */
 extern void cali_param_init(void);
 
+/* Owner ABI is explicit and independent of USB's __packed macro. */
+typedef char cali_head_size_check[(sizeof(head_cali_t)==8) ? 1:-1];
+typedef char cali_head_version_check[(offsetof(head_cali_t,firmware_version)==1) ? 1:-1];
+typedef char cali_head_temp_check[(offsetof(head_cali_t,temperature)==3) ? 1:-1];
+typedef char cali_head_latitude_check[(offsetof(head_cali_t,latitude)==4) ? 1:-1];
+typedef char cali_gm_size_check[(sizeof(gimbal_cali_t)==20) ? 1:-1];
+typedef char cali_gm_yaw_check[(offsetof(gimbal_cali_t,yaw_max_angle)==4 && offsetof(gimbal_cali_t,yaw_min_angle)==8) ? 1:-1];
+typedef char cali_sensor_size_check[(sizeof(cali_sensor_t)==13 && offsetof(cali_sensor_t,flash_buf)==5) ? 1:-1];
+typedef struct {
+    uint32_t read_failures, write_failures, verify_failures, invalid_head, invalid_yaw;
+    int8_t last_result; /* 0 idle; 1 verified write; -1 unavailable/read; -2 write; -3 readback */
+} cali_storage_status_t;
+extern volatile cali_storage_status_t cali_storage_status;
+
 // DM Pitch safe-position calibration. Set request in Keil Watch:
 // 1=capture first position, 2=capture second, 3=validate/save, 4=cancel.
 // Capture positions already inside the mechanical travel; the motor is not driven by this routine.
@@ -230,8 +154,9 @@ typedef struct
     volatile uint8_t request;
     volatile uint8_t captured; // bit 0: first, bit 1: second
     volatile uint8_t stored_valid; // 1 if a valid DM range was loaded or saved
+    volatile uint8_t saved_pending; // saved v1 exists, waiting for fresh in-range feedback to apply
     volatile uint8_t init_done; // gimbal_init finished; runtime reload may apply the range
-    volatile int8_t result;     // 0 idle, 1 captured, 2 saved, negative: rejected
+    volatile int8_t result;     // 0 idle, 1 captured, 2 saved/applied; -6 saved pending; other negatives: rejected
     float first_pos;
     float second_pos;
     float min_pos;

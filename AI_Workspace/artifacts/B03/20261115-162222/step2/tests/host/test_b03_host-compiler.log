@@ -1,0 +1,32 @@
+
+Error: L6218E: Undefined symbol camera_channel_init_ex (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol camera_channel_tick (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol camera_channel_trigger (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol ch_uproto_arbiter_tick (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol ch_uproto_bind (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol ch_uproto_register_rx (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol ch_uproto_send_notify (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol channel_bind_transport (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol channel_init (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol chmgr_init (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol chmgr_register (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol chmgr_tick (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol game_status (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol gimbal_channel_init_ex (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol gimbal_channel_publish_referee (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol gimbal_channel_publish_tfmini (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol gimbal_mailbox_set (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol hUsbDeviceHS (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol osThreadCreate (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol projectile_allowance (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol referee_data_available (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol robot_status (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol tfmini_read (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol tfmini_uart_init (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol tim24_timebase_now_us (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol time_sync_channel_init_ex (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol time_sync_channel_now_us (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol uproto_tick (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol usb_cdc_port_bind_uproto (referred from test_b03_host.o).
+Error: L6218E: Undefined symbol usb_cdc_port_rx_pump (referred from test_b03_host.o).
+Finished: 0 information, 0 warning and 30 error messages.

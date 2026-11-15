@@ -1,0 +1,4 @@
+{"name": "b02-chassis-rx", "status": "0x600d", "checks": 178, "failure": 0, "passed": true}
+{"name": "b02-rc-rx", "status": "0x600d", "checks": 131, "failure": 0, "passed": true}
+{"name": "b02-usb-handoff", "status": "0x600d", "checks": 19, "failure": 0, "passed": true}
+all receive-chain checks passed

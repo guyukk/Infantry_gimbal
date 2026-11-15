@@ -1,0 +1,74 @@
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\calibrate_task.h", line 175: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef  __packed struct
+           ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\calibrate_task.h", line 186: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef  __packed struct
+           ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\remote_control.h", line 60: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed  struct
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\Lib\user_lib.h", line 99: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\Lib\user_lib.h", line 115: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\referee.h", line 34: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct //0001
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\referee.h", line 41: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct //0002
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\referee.h", line 45: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\referee.h", line 62: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct //0101
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\referee.h", line 67: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct //0x0102
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\referee.h", line 76: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct //0x0103
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\referee.h", line 83: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\referee.h", line 88: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct //0x0201
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\referee.h", line 103: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct //0x0202
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\referee.h", line 113: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct //0x0203
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\referee.h", line 121: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct //0x0204
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\referee.h", line 126: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct //0x0205
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\referee.h", line 132: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct //0x0206
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\referee.h", line 138: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct //0x0207
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\referee.h", line 144: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\referee.h", line 148: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct //0x0301
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\referee.h", line 157: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\referee.h", line 166: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct
+          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\referee.h", line 171: Warning:  #3108-D: attribute "__packed__" does not apply here
+  typedef __packed struct
+          ^
+D:\文档\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout_usbfirst.c: 24 warnings, 0 errors
+

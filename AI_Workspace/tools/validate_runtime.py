@@ -28,7 +28,7 @@ DEFAULT_RESULTS = ARTIFACTS / "validation/gimbal-runtime"
 
 def source():
     sender = functions(preprocess(ROOT, PROJECT, "User/APP/message_task.c", "gimbal"))["send_data_to_chassis"]
-    receiver = functions(preprocess(ROOT, PROJECT, "User/Bsp/bsp_usart.c", "gimbal"))["chassis_to_gimbal"]
+    receiver = functions(preprocess(ROOT, PROJECT, "User/Bsp/bsp_usart.c", "gimbal"))["chassis_frame_parse"]
     neutral = functions(preprocess(ROOT, PROJECT, "User/APP/video_transmission_module.c", "gimbal"))["vtm_data_init"]
     constrain = functions(read_source(ROOT / "User/Lib/user_lib.c"))["loop_float_constrain"]
     header = without_comments(read_source(ROOT / "User/APP/video_transmission_module.h"))
@@ -39,6 +39,7 @@ def source():
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include <math.h>
 typedef float fp32;
 typedef union { float fp32; uint8_t bytes[4]; } fp32_to_bytes;
 ''' + packed + r'''
@@ -49,11 +50,18 @@ struct { struct { float radian_of_ecd; } gimbal_yaw_motor; } gimbal_control;
 typedef struct { uint8_t shoot_mode; } shoot_control_t;
 shoot_control_t shoot_control;
 uint8_t gimbal_behaviour;
-struct {
+typedef struct {
   float chassis_vx, chassis_vy, chassis_wz;
   float chassis_yaw, chassis_pitch, chassis_roll, cap_voltage;
   uint8_t chassis_mode, robot_id;
-} chassis_data;
+} chassis_data_t;
+#define CHASSIS_DATA_LENGTH 28
+#define CHASSIS_FRAME_HEAD 's'
+#define CHASSIS_FRAME_TAIL 'e'
+#define CHASSIS_ANGLE_LIMIT_RAD 3.2f
+#define CHASSIS_SPEED_LIMIT_MPS 10.0f
+#define CHASSIS_WZ_LIMIT_RADPS 50.0f
+#define CHASSIS_MODE_MAX 2u
 float ins_angles[3];
 float *get_INS_angle_point(void) { return ins_angles; }
 uint8_t frame46[46];
@@ -65,7 +73,7 @@ void USART1_Transmit_DMA(uint8_t *bytes, uint16_t size) {
 float loop_float_constrain(float Input, float minValue, float maxValue)''' + constrain + "\n" + (
         "void vtm_data_init(void)" + neutral + "\n"
         "void send_data_to_chassis(void)" + sender + "\n"
-        "void chassis_to_gimbal(uint8_t *data_chassis)" + receiver + "\n"
+        "static uint8_t chassis_frame_parse(const uint8_t *frame, chassis_data_t *out)" + receiver + "\n"
     ) + r'''
 volatile struct { uint32_t status, checks, failure; } test_result;
 __asm void stop_test(void) {
@@ -107,12 +115,14 @@ void test_entry(void) {
   expected = -0.25f; memcpy(incoming + 19, &expected, 4);
   expected = 0.75f; memcpy(incoming + 23, &expected, 4);
   incoming[27] = 'e';
-  chassis_to_gimbal(incoming);
-  check(chassis_data.chassis_yaw == 0.125f && chassis_data.chassis_pitch == -1.0f &&
-        chassis_data.chassis_roll == 0.5f, 11);
-  check(chassis_data.chassis_mode == 2 && chassis_data.robot_id == 103, 12);
-  check(chassis_data.chassis_vx == 1.0f && chassis_data.chassis_vy == -0.25f &&
-        chassis_data.chassis_wz == 0.75f, 13);
+  chassis_data_t parsed;
+  memset(&parsed, 0, sizeof(parsed));
+  check(chassis_frame_parse(incoming, &parsed) == 0, 11);
+  check(parsed.chassis_yaw == 0.125f && parsed.chassis_pitch == -1.0f &&
+        parsed.chassis_roll == 0.5f, 12);
+  check(parsed.chassis_mode == 2 && parsed.robot_id == 103, 13);
+  check(parsed.chassis_vx == 1.0f && parsed.chassis_vy == -0.25f &&
+        parsed.chassis_wz == 0.75f, 14);
   test_result.status = 0x600D;
   stop_test();
 }

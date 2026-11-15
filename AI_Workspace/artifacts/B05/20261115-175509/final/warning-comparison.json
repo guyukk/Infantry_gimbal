@@ -1,0 +1,36 @@
+{
+  "G": {
+    "before": 31,
+    "after": 0,
+    "added": {},
+    "removed": {
+      "warning:  #223-D: function \"comm_camera_trigger_pulse\" declared implicitly": 1,
+      "warning:  #185-D: dynamic initialization in unreachable code": 1,
+      "warning:  #120-D: return value type does not match the function type": 1,
+      "warning:  #1-D: last line of file ends without a newline": 1,
+      "warning:  #177-D: variable \"GYRO_FLAG\"  was declared but never referenced": 1,
+      "warning:  #177-D: variable \"CHASSIS_FLAG\"  was declared but never referenced": 1,
+      "warning:  #177-D: function \"cali_gyro_hook\"  was declared but never referenced": 1,
+      "warning:  #3108-D: attribute \"__packed__\" does not apply here": 24
+    },
+    "baseline": "D:\\文档\\Printk\\bubing\\chassis\\Infantry_chassis\\AI_Workspace\\artifacts\\B03\\20261115-162222\\final\\build-signed\\gimbal.log",
+    "current": "D:\\文档\\Printk\\bubing\\chassis\\Infantry_chassis\\AI_Workspace\\artifacts\\B05\\20261115-175509\\final\\build\\gimbal.log"
+  },
+  "G-release": {
+    "before": 31,
+    "after": 0,
+    "added": {},
+    "removed": {
+      "warning:  #223-D: function \"comm_camera_trigger_pulse\" declared implicitly": 1,
+      "warning:  #185-D: dynamic initialization in unreachable code": 1,
+      "warning:  #120-D: return value type does not match the function type": 1,
+      "warning:  #1-D: last line of file ends without a newline": 1,
+      "warning:  #177-D: variable \"GYRO_FLAG\"  was declared but never referenced": 1,
+      "warning:  #177-D: variable \"CHASSIS_FLAG\"  was declared but never referenced": 1,
+      "warning:  #177-D: function \"cali_gyro_hook\"  was declared but never referenced": 1,
+      "warning:  #3108-D: attribute \"__packed__\" does not apply here": 24
+    },
+    "baseline": "D:\\文档\\Printk\\bubing\\chassis\\Infantry_chassis\\AI_Workspace\\artifacts\\B03\\20261115-162222\\final\\build-signed\\gimbal.log",
+    "current": "D:\\文档\\Printk\\bubing\\gimbal\\Infantry_gimbal\\AI_Workspace\\artifacts\\B05\\20261115-175509\\final\\build-release\\gimbal.log"
+  }
+}

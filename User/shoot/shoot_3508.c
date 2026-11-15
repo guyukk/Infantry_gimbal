@@ -1,3 +1,5 @@
+#include "host_control.h"
+#include "health.h"
 /**
   ****************************(C) COPYRIGHT 2025 PRINTK****************************
   * @file       shoot.c/h
@@ -142,10 +144,23 @@ fp32 fric_up = FRIC_UP;
   * @param[in]      void
   * @retval         void
   */
+static uint8_t host_owns_continuous;
+static int8_t shoot_last_s=RC_SW_UP;
+static bool shoot_pressed_E, shoot_last_pressed_E;
+static fp32 speed_fliter_1, speed_fliter_2, speed_fliter_3;
+
+void shoot_history_reset(void)
+{
+    speed_fliter_1=speed_fliter_2=speed_fliter_3=0.0f;
+    host_owns_continuous=0U;
+    host_fire_cancel();
+    shoot_last_s=shoot_control.shoot_rc ? shoot_control.shoot_rc->rc.s[SHOOT_RC_MODE_CHANNEL] : RC_SW_UP;
+    shoot_pressed_E=shoot_last_pressed_E=shoot_control.shoot_rc ? !!(shoot_control.shoot_rc->key.v & KEY_PRESSED_OFFSET_E) : 0U;
+}
 __attribute__((used))void shoot_set_mode(void)
 {
 	//左拨杆上升沿触发射击，为保证刚上电时，即使左拨杆在上档也不会触发射击，所以初始化上一次左拨杆的位置为上档
-	static int8_t last_s = RC_SW_UP;
+
 	//获取当前左拨杆的位置
 	uint8_t current_s = shoot_control.shoot_rc->rc.s[SHOOT_RC_MODE_CHANNEL];
 
@@ -153,7 +168,7 @@ __attribute__((used))void shoot_set_mode(void)
 	if (switch_is_up(current_s))
 	{
 		// 上升沿检测
-		if (!switch_is_up(last_s))
+		if (!switch_is_up(shoot_last_s))
 		{
 			// 切换 STOP <-> READY_FRIC
 			shoot_control.shoot_mode = (shoot_control.shoot_mode == SHOOT_STOP) ? SHOOT_READY_FRIC : SHOOT_STOP;
@@ -162,7 +177,7 @@ __attribute__((used))void shoot_set_mode(void)
 	/* 下拨触发射击 */
 	else if (!switch_is_up(current_s))
 	{
-		if (switch_is_up(last_s))
+		if (switch_is_up(shoot_last_s))
 		{
 			// 在准备完成状态允许触发
 			if (shoot_control.shoot_mode == SHOOT_READY_BULLET) 
@@ -174,13 +189,13 @@ __attribute__((used))void shoot_set_mode(void)
 	
 	{
 		//可以使用E键开启和关闭摩擦轮
-		static bool pressed_E = false, last_pressed_E = false;
-		pressed_E = shoot_control.shoot_rc->key.v & KEY_PRESSED_OFFSET_E;
-		if (pressed_E && !last_pressed_E)
+
+		shoot_pressed_E = shoot_control.shoot_rc->key.v & KEY_PRESSED_OFFSET_E;
+		if (shoot_pressed_E && !shoot_last_pressed_E)
 		{
 			shoot_control.shoot_mode = (shoot_control.shoot_mode >= SHOOT_READY_FRIC) ? SHOOT_STOP : SHOOT_READY_FRIC;
 		}
-		last_pressed_E = pressed_E;
+		shoot_last_pressed_E = shoot_pressed_E;
 	}
 	
 //	//射击热量及射击热量限制获取
@@ -234,7 +249,24 @@ __attribute__((used))void shoot_set_mode(void)
 		shoot_control.shoot_mode = SHOOT_STOP;
 	}
 	
-	last_s = current_s;
+    /* Local stop/manual fire wins. Host requests never modify RC input. */
+    if (shoot_control.shoot_mode == SHOOT_STOP || gimbal_cmd_to_shoot_stop())
+    { host_fire_cancel();host_owns_continuous=0U; }
+    else if (shoot_control.press_l || shoot_control.last_press_l || switch_is_down(current_s))
+    { host_fire_cancel();host_owns_continuous=0U; }
+    else
+    {
+        host_fire_request_t request;
+        uint8_t active=host_fire_take(&request);
+        if (active && shoot_control.shoot_mode >= SHOOT_READY_BULLET)
+        {
+            if (request.continuous) {shoot_control.shoot_mode=SHOOT_CONTINUE_BULLET;host_owns_continuous=1U;}
+            else if (request.single) {shoot_control.shoot_mode=SHOOT_BULLET;host_owns_continuous=0U;}
+        }
+        else if (host_owns_continuous && shoot_control.shoot_mode == SHOOT_CONTINUE_BULLET)
+        { shoot_control.shoot_mode=SHOOT_READY_BULLET;shoot_control.speed_set=0.0f;host_owns_continuous=0U; }
+    }
+	shoot_last_s = current_s;
 }
 
 /**
@@ -244,9 +276,9 @@ __attribute__((used))void shoot_set_mode(void)
   */
 __attribute__((used))void shoot_feedback_update(void)
 {
-	static fp32 speed_fliter_1 = 0.0f;
-	static fp32 speed_fliter_2 = 0.0f;
-	static fp32 speed_fliter_3 = 0.0f;
+
+
+
 
 	//拨弹轮电机速度滤波一下
 	static const fp32 fliter_num[3] = {1.725709860247969f, -0.75594777109163436f, 0.030237910843665373f};

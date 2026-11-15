@@ -28,6 +28,9 @@ extern void BMI088_GYRO_NS_H(void);
 extern uint8_t BMI088_read_write_byte(uint8_t reg);
 
 extern SPI_HandleTypeDef *BMI088_SPI;
+void BMI088_io_begin(void);
+uint8_t BMI088_io_end(void);
+#define BMI088_SPI_TIMEOUT_MS 1U
 
 #elif defined(BMI088_USE_IIC)
 

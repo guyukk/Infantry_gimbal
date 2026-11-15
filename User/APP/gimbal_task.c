@@ -1,3 +1,4 @@
+#include "health.h"
 /**
   ****************************(C) COPYRIGHT 2019 DJI****************************
   * @file       gimbal_task.c/h
@@ -108,12 +109,16 @@ extern int16_t yaw_can_set_current, shoot_can_set_current;
 
 void gimbal_task(void const *pvParameters)
 {
+    static RC_ctrl_t control_rc;
 	vTaskDelay(GIMBAL_TASK_INIT_TIME);
 	gimbal_init(&gimbal_control);
 	shoot_init();
 
 	while (1)
 	{
+        if (!rc_ctrl_snapshot(&control_rc,NULL)) health_reject(HEALTH_RC);
+        gimbal_control.gimbal_rc_ctrl=&control_rc;
+        shoot_control.shoot_rc=&control_rc;
 		gimbal_set_mode(&gimbal_control);                    //设置云台控制模式
 		gimbal_mode_change_control_transit(&gimbal_control); //控制模式切换 控制数据过渡
 		gimbal_feedback_update(&gimbal_control);             //云台数据反馈
@@ -194,13 +199,11 @@ void gimbal_absolute_angle_limit(gimbal_motor_t *gimbal_motor, fp32 add)
 	//自瞄这一块
 	if(gimbal_motor == &gimbal_control.gimbal_yaw_motor)
 	{
-		bias_angle = aim.receive.yaw;
-		aim.receive.yaw = 0.0f;
+		bias_angle = auto_aim_take_increment(0U);
 	}
 	else if(gimbal_motor == &gimbal_control.gimbal_pitch_motor)
 	{			
-		bias_angle = aim.receive.pitch;
-		aim.receive.pitch = 0.0f;
+		bias_angle = auto_aim_take_increment(1U);
 	}
 	
 	angle_set = gimbal_motor->absolute_angle_set + bias_angle + add;
@@ -226,13 +229,11 @@ void gimbal_relative_angle_limit(gimbal_motor_t *gimbal_motor, fp32 add)
 	//自瞄这一块
 	if(gimbal_motor == &gimbal_control.gimbal_yaw_motor)
 	{
-		bias_angle = aim.receive.yaw;
-		aim.receive.yaw = 0.0f;
+		bias_angle = auto_aim_take_increment(0U);
 	}
 	else if(gimbal_motor == &gimbal_control.gimbal_pitch_motor)
 	{
-		bias_angle = aim.receive.pitch;
-		aim.receive.pitch = 0.0f;
+		bias_angle = auto_aim_take_increment(1U);
 	}
 
 	gimbal_motor->relative_angle_set = gimbal_motor->relative_angle_set + add + bias_angle;

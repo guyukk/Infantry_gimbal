@@ -50,7 +50,9 @@
 /* ================= 机器人整体配置 ================= */
 
 #define ROBOT_TYPE       	Infantry_robot
+#ifndef ROBOT_MODE
 #define ROBOT_MODE        debug
+#endif
 #define ROBOT_CHASSIS     Steering_wheel
 #define ROBOT_GIMBAL      yaw_pitch_direct
 #define ROBOT_FRICTION    friction_3508

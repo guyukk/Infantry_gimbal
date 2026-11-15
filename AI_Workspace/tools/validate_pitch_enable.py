@@ -1,4 +1,6 @@
-"""Exercise the active DM Pitch enable retry gate under ARMCC/Unicorn."""
+"""Focused DM Pitch enable retry checks; health receipt is modeled from the
+supplied feedback/tick. Full health/rearm and valid tick-zero use validate_b03_health.py.
+"""
 
 import argparse
 import json
@@ -49,6 +51,13 @@ uint8_t fake_tx_status;
 uint16_t sent_id;
 int fake_can;
 uint32_t HAL_GetTick(void) { return fake_now; }
+enum { HEALTH_PITCH=4 };
+static const dm_measure_t *health_measure;
+uint8_t health_fresh(uint8_t source,uint32_t now) {
+    (void)source;
+    return health_measure && health_measure->fdb.last_fdb_time!=0U &&
+        (uint32_t)(now-health_measure->fdb.last_fdb_time)<=PITCH_MIT_FEEDBACK_TIMEOUT_MS;
+}
 uint8_t Motor_enable(void *can, uint16_t id) {
     if (can != &fake_can) return 255;
     sent_id = id;
@@ -59,6 +68,10 @@ static uint8_t pitch_dm_feedback_allows_mit(const dm_measure_t *motor)
 ''' + gimbal["pitch_dm_feedback_allows_mit"] + r'''
 static uint8_t pitch_dm_enable_ready(const dm_measure_t *measure)
 ''' + gimbal["pitch_dm_enable_ready"] + r'''
+static uint8_t test_pitch_enable(const dm_measure_t *measure) {
+    health_measure=measure;return pitch_dm_enable_ready(measure);
+}
+#define pitch_dm_enable_ready(measure) test_pitch_enable(measure)
 volatile struct { uint32_t status, checks, failure; } test_result;
 __asm void stop_test(void) {
     BKPT 0

@@ -170,9 +170,8 @@ int main(void)
 	HAL_UART_Receive_DMA(&huart7, usart7_buf, 21);
 	/* USART10 RX is owned by TFmini; init handled in comm_app to avoid buffer overrun. */
 	
-	HAL_UARTEx_ReceiveToIdle_DMA(&huart5, remote_buff, SBUS_RX_BUF_NUM);
-	extern uint8_t gimbal_receive_data[CHASSIS_DATA_LENGTH];
-	HAL_UARTEx_ReceiveToIdle_DMA(&huart1, gimbal_receive_data, CHASSIS_DATA_LENGTH);
+	/* USART1/UART5 接收由 bsp_usart 统一启动（单一所有者，P01/P03） */
+	bsp_usart_rx_start();
 	
 	HAL_ADCEx_Calibration_Start(&hadc3, ADC_CALIB_OFFSET, ADC_SINGLE_ENDED);
 	HAL_ADCEx_Calibration_Start(&hadc1, ADC_CALIB_OFFSET, ADC_SINGLE_ENDED);

@@ -1,0 +1,19 @@
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\B05\20261115-175509\before2\test_b05_interface-generated.c", line 23: Warning:  #223-D: function "get_INS_angle_point" declared implicitly
+      fp32 *imu = get_INS_angle_point();
+                  ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\B05\20261115-175509\before2\test_b05_interface-generated.c", line 23: Warning:  #144-D: a value of type "int" cannot be used to initialize an entity of type "fp32 *"
+      fp32 *imu = get_INS_angle_point();
+                  ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\B05\20261115-175509\before2\test_b05_interface-generated.c", line 58: Error:  #20: identifier "robot_status" is undefined
+      const uint8_t rid = robot_status.robot_id;
+                          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\B05\20261115-175509\before2\test_b05_interface-generated.c", line 60: Error:  #20: identifier "game_status" is undefined
+      msg.game_stage = (int32_t)game_status.game_progress;
+                                ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\B05\20261115-175509\before2\test_b05_interface-generated.c", line 74: Error:  #20: identifier "projectile_allowance" is undefined
+             ((projectile_allowance.projectile_allowance_17mm > 0u) ||
+               ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\B05\20261115-175509\before2\test_b05_interface-generated.c", line 107: Warning:  #159-D: declaration is incompatible with previous "get_INS_angle_point"  (declared at line 23)
+  fp32 *get_INS_angle_point(void){return angles;}
+        ^
+D:\文档\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\B05\20261115-175509\before2\test_b05_interface-generated.c: 3 warnings, 3 errors

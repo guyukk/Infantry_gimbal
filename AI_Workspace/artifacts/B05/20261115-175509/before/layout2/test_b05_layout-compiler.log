@@ -1,0 +1,73 @@
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 7: Error:  #20: identifier "RC_ctrl_t" is undefined
+  struct align_RC_ctrl_t {char prefix;RC_ctrl_t value;};
+                                      ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 8: Error:  #20: identifier "Ordinary_Least_Squares_t" is undefined
+  struct align_Ordinary_Least_Squares_t {char prefix;Ordinary_Least_Squares_t value;};
+                                                     ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 9: Error:  #20: identifier "first_order_filter_type_t" is undefined
+  struct align_first_order_filter_type_t {char prefix;first_order_filter_type_t value;};
+                                                      ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 10: Error:  #20: identifier "robot_id_t" is undefined
+  struct align_robot_id_t {char prefix;robot_id_t value;};
+                                       ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 11: Error:  #20: identifier "game_progress_t" is undefined
+  struct align_game_progress_t {char prefix;game_progress_t value;};
+                                            ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 12: Error:  #20: identifier "ext_game_state_t" is undefined
+  struct align_ext_game_state_t {char prefix;ext_game_state_t value;};
+                                             ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 13: Error:  #20: identifier "ext_game_result_t" is undefined
+  struct align_ext_game_result_t {char prefix;ext_game_result_t value;};
+                                              ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 14: Error:  #20: identifier "ext_game_robot_HP_t" is undefined
+  struct align_ext_game_robot_HP_t {char prefix;ext_game_robot_HP_t value;};
+                                                ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 15: Error:  #20: identifier "ext_event_data_t" is undefined
+  struct align_ext_event_data_t {char prefix;ext_event_data_t value;};
+                                             ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 16: Error:  #20: identifier "ext_supply_projectile_action_t" is undefined
+  struct align_ext_supply_projectile_action_t {char prefix;ext_supply_projectile_action_t value;};
+                                                           ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 17: Error:  #20: identifier "ext_supply_projectile_booking_t" is undefined
+  struct align_ext_supply_projectile_booking_t {char prefix;ext_supply_projectile_booking_t value;};
+                                                            ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 18: Error:  #20: identifier "ext_referee_warning_t" is undefined
+  struct align_ext_referee_warning_t {char prefix;ext_referee_warning_t value;};
+                                                  ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 19: Error:  #20: identifier "ext_game_robot_state_t" is undefined
+  struct align_ext_game_robot_state_t {char prefix;ext_game_robot_state_t value;};
+                                                   ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 20: Error:  #20: identifier "ext_power_heat_data_t" is undefined
+  struct align_ext_power_heat_data_t {char prefix;ext_power_heat_data_t value;};
+                                                  ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 21: Error:  #20: identifier "ext_game_robot_pos_t" is undefined
+  struct align_ext_game_robot_pos_t {char prefix;ext_game_robot_pos_t value;};
+                                                 ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 22: Error:  #20: identifier "ext_buff_musk_t" is undefined
+  struct align_ext_buff_musk_t {char prefix;ext_buff_musk_t value;};
+                                            ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 23: Error:  #20: identifier "aerial_robot_energy_t" is undefined
+  struct align_aerial_robot_energy_t {char prefix;aerial_robot_energy_t value;};
+                                                  ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 24: Error:  #20: identifier "ext_robot_hurt_t" is undefined
+  struct align_ext_robot_hurt_t {char prefix;ext_robot_hurt_t value;};
+                                             ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 25: Error:  #20: identifier "ext_shoot_data_t" is undefined
+  struct align_ext_shoot_data_t {char prefix;ext_shoot_data_t value;};
+                                             ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 26: Error:  #20: identifier "ext_bullet_remaining_t" is undefined
+  struct align_ext_bullet_remaining_t {char prefix;ext_bullet_remaining_t value;};
+                                                   ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 27: Error:  #20: identifier "ext_student_interactive_data_t" is undefined
+  struct align_ext_student_interactive_data_t {char prefix;ext_student_interactive_data_t value;};
+                                                           ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 28: Error:  #20: identifier "custom_data_t" is undefined
+  struct align_custom_data_t {char prefix;custom_data_t value;};
+                                          ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 29: Error:  #20: identifier "ext_up_stream_data_t" is undefined
+  struct align_ext_up_stream_data_t {char prefix;ext_up_stream_data_t value;};
+                                                 ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c", line 30: Error:  #20: identifier "ext_download_stream_data_t" is undefined
+  struct align_ext_download_stream_data_t {char prefix;ext_download_stream_data_t value;};
+                                                       ^
+D:\文档\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_layout.c: 0 warnings, 24 errors

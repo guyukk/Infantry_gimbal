@@ -101,6 +101,7 @@ extern uint8_t bmi088_gyro_init(void);
 extern IMU_Data_t BMI088;
 
 extern void BMI088_Read(IMU_Data_t *bmi088);
+extern uint8_t BMI088_sample_valid;
 // 校准零漂
 extern void Calibrate_MPU_Offset(IMU_Data_t *bmi088);
 #endif

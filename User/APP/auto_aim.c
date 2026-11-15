@@ -1,3 +1,4 @@
+#include "health.h"
 #include "arm_math.h"
 #include "auto_aim.h"
 #include "bsp_usart.h"
@@ -78,20 +79,7 @@ float mf5_update(MedianFilter5 *f, float new_val)
         return new_val;
     }
 
-    /* 1. 若检测到 0.0f，视为异常/丢帧，直接返回上次有效值 */
-    if (new_val == 0.0f)
-    {
-        if (f->zero_hold_cnt < MF5_ZERO_HOLD_MAX_CNT)
-        {
-            f->zero_hold_cnt++;
-            return f->last_out;
-        }
-        mf5_reset(f);
-        return 0.0f;
-    }
-
-    f->zero_hold_cnt = 0U;
-
+    /* Zero is valid data, including after a nonzero measurement. */
     /* 2. 写环形缓冲区 */
     f->buf[f->idx] = new_val;
     f->idx = (f->idx + 1) % 5;
@@ -152,6 +140,86 @@ static float s_last_err_pitch = 0.0f;
 static float s_err_d_yaw = 0.0f;
 static float s_err_d_pitch = 0.0f;
 
+typedef struct {
+    float yaw_error, pitch_error;
+    auto_aim_rx_status_t status;
+} auto_aim_input_t;
+static auto_aim_input_t s_auto_aim_rx;
+static uint32_t s_required_generation;
+static uint8_t s_last_r;
+static uint32_t s_health_faults[4];
+static const uint8_t aim_health_sources[4]={HEALTH_RC,HEALTH_IMU,HEALTH_YAW,HEALTH_PITCH};
+static void auto_aim_clear_history(auto_aim_t *state);
+static uint8_t auto_aim_health_changed(uint32_t now)
+{
+    uint8_t i,changed=0U;
+    health_status_t source;
+    for (i=0U;i<4U;i++)
+    {
+        health_snapshot(aim_health_sources[i],now,&source);
+        if (s_health_faults[i] != source.fault_generation) changed=1U;
+        s_health_faults[i]=source.fault_generation;
+    }
+    if (changed) {aim.auto_aim_flag=AIM_OFF;auto_aim_clear_history(&aim);}
+    return changed;
+}
+
+static uint8_t auto_aim_local_ready(uint32_t now)
+{
+    if (auto_aim_health_changed(now)) return 0U;
+    if (gimbal_behaviour != GIMBAL_ABSOLUTE_ANGLE && gimbal_behaviour != GIMBAL_RELATIVE_ANGLE &&
+        gimbal_behaviour != GIMBAL_SPIN) return 0U;
+    return health_fresh(HEALTH_IMU,now) &&
+        health_gate_ready(HEALTH_GATE_YAW,HEALTH_YAW_MASK|health_gate_mask(HEALTH_GATE_YAW),now) &&
+        health_gate_ready(HEALTH_GATE_PITCH,HEALTH_PITCH_MASK|health_gate_mask(HEALTH_GATE_PITCH),now);
+}
+static uint8_t auto_aim_command_ready(uint32_t now)
+{
+    return aim.auto_aim_flag == AIM_ON && s_auto_aim_rx.status.seen &&
+        s_auto_aim_rx.status.generation != s_required_generation &&
+        (uint32_t)(now-s_auto_aim_rx.status.last_rx_ms) <= AUTO_AIM_TIMEOUT && auto_aim_local_ready(now);
+}
+static void auto_aim_clear_history(auto_aim_t *state)
+{
+    memset(&s_auto_aim_ctrl,0,sizeof(s_auto_aim_ctrl));
+    s_last_err_yaw=s_last_err_pitch=s_err_d_yaw=s_err_d_pitch=0.0f;
+    state->receive.yaw=state->receive.pitch=0.0f;
+    state->online=0U;
+    mf5_reset(&yawfilter);mf5_reset(&pitchfilter);
+    s_required_generation=s_auto_aim_rx.status.generation;
+}
+void auto_aim_cancel(void)
+{
+    uint32_t key=__get_PRIMASK();__disable_irq();
+    aim.auto_aim_flag=AIM_OFF;auto_aim_clear_history(&aim);__set_PRIMASK(key);
+}
+uint8_t auto_aim_is_ready(void)
+{
+    uint32_t key=__get_PRIMASK();uint8_t ready;
+    __disable_irq();ready=auto_aim_command_ready(HAL_GetTick());__set_PRIMASK(key);return ready;
+}
+void auto_aim_rx_status(auto_aim_rx_status_t *out)
+{
+    uint32_t key;
+    if (out == NULL) return;
+    key=__get_PRIMASK();__disable_irq();*out=s_auto_aim_rx.status;__set_PRIMASK(key);
+}
+fp32 auto_aim_take_increment(uint8_t pitch)
+{
+    uint32_t key=__get_PRIMASK(),now=HAL_GetTick();
+    fp32 value=0.0f;
+    __disable_irq();
+    if (!auto_aim_command_ready(now))
+    {
+        if (!auto_aim_local_ready(now) || (s_auto_aim_rx.status.seen &&
+            (uint32_t)(now-s_auto_aim_rx.status.last_rx_ms)>AUTO_AIM_TIMEOUT)) aim.auto_aim_flag=AIM_OFF;
+        auto_aim_clear_history(&aim);
+    }
+    else if (pitch) {value=aim.receive.pitch;aim.receive.pitch=0.0f;}
+    else {value=aim.receive.yaw;aim.receive.yaw=0.0f;}
+    __set_PRIMASK(key);return value;
+}
+
 static inline float aa_clamp(float v, float lo, float hi)
 {
     if (v < lo) return lo;
@@ -171,94 +239,58 @@ void auto_aim_loop(auto_aim_t* aim_loop)
 
 void auto_aim_init(auto_aim_t *aim_init)
 {
-    if (aim_init == NULL)
+    uint32_t key;
+    if (aim_init == NULL) return;
+    key=__get_PRIMASK();__disable_irq();
+    memset(aim_init,0,sizeof(*aim_init));
+    aim_init->aim_rc=get_remote_control_point();
+    aim_init->last_fdb=s_auto_aim_rx.status.last_rx_ms;
     {
-        return;
+        uint8_t i;health_status_t source;
+        for (i=0U;i<4U;i++) {health_snapshot(aim_health_sources[i],HAL_GetTick(),&source);s_health_faults[i]=source.fault_generation;}
     }
-
-    /* Auto-aim disabled by default (RC has priority). */
-    /* 默认关闭自瞄，优先听遥控器。 */
-    aim_init->auto_aim_flag = AIM_OFF;
-    aim_init->last_fdb = 0;
-    aim_init->online = 1;
-
-    aim_init->shoot_delay = 0;
-    aim_init->yaw_delay = 0;
-    aim_init->pitch_delay = 0;
-
-    aim_init->receive.distance = 0.0f;
-    aim_init->receive.pitch = 0.0f;
-    aim_init->receive.shoot_delay = 0.0f;
-    aim_init->receive.yaw = 0.0f;
-
-    aim_init->aim_rc = get_remote_control_point();
-		
+    s_last_r=0U;auto_aim_clear_history(aim_init);
+    __set_PRIMASK(key);
 }
 
 void auto_aim_set(auto_aim_t *aim_set)
 {
-    if (aim_set == NULL)
+    static RC_ctrl_t local_rc;
+    uint32_t key,now=HAL_GetTick();
+    uint8_t pressed;
+    if (aim_set == NULL) return;
+    key=__get_PRIMASK();__disable_irq();
+    if (!rc_ctrl_snapshot(&local_rc,NULL)) {aim_set->auto_aim_flag=AIM_OFF;auto_aim_clear_history(aim_set);__set_PRIMASK(key);return;}
+    aim_set->aim_rc=&local_rc;
+    pressed=!!(local_rc.key.v & KEY_PRESSED_OFFSET_R);
+    if (!auto_aim_local_ready(now))
     {
-        return;
+        aim_set->auto_aim_flag=AIM_OFF;s_last_r=pressed;auto_aim_clear_history(aim_set);
+        __set_PRIMASK(key);return;
     }
-
-		static bool press_R = false, last_press_R = false;
-#if ROBOT_MODE == release
-    // timeout check: if host not updated for a while, mark offline and disable auto-aim
-    if (HAL_GetTick() - aim_set->last_fdb > AUTO_AIM_TIMEOUT)
+    if (pressed && !s_last_r)
     {
-        aim_set->online = 0;
-        aim_set->auto_aim_flag = AIM_OFF;
-        aim_set->receive.yaw = 0.0f;
-        aim_set->receive.pitch = 0.0f;
-        return;
+        aim_set->auto_aim_flag=aim_set->auto_aim_flag == AIM_OFF ? AIM_ON : AIM_OFF;
+        auto_aim_clear_history(aim_set); /* A new enable needs a new DELTA. */
     }
-#endif
-		{
-			
-			press_R = aim_set->aim_rc->key.v & KEY_PRESSED_OFFSET_R;
-			if(press_R && !last_press_R)
-			{
-				aim_set->auto_aim_flag = (aim_set->auto_aim_flag == AIM_OFF) ? AIM_ON : AIM_OFF;
-			}
-			last_press_R = press_R;
-		}
+    s_last_r=pressed;
+    if (aim_set->auto_aim_flag == AIM_OFF || (s_auto_aim_rx.status.seen &&
+        (uint32_t)(now-s_auto_aim_rx.status.last_rx_ms)>AUTO_AIM_TIMEOUT))
+    {
+        aim_set->auto_aim_flag=AIM_OFF;auto_aim_clear_history(aim_set);
+    }
+    else aim_set->online=auto_aim_command_ready(now);
+    __set_PRIMASK(key);
 }
 
 void auto_aim_feedback_update(auto_aim_t *aim_update)
 {
-    if (aim_update == NULL)
-    {
-        return;
-    }
-
-    if (aim_update->auto_aim_flag == AIM_OFF)
-    {
-				aim_update->receive.yaw  = 0.0f;
-				aim_update->receive.pitch  = 0.0f;
-        return;
-    }
-
-    uint8_t id = get_robot_id();
-    (void)id;
-
-#if AUTO_AIM_UPROTO_TICK_ENABLE
-    /* let comm_app drive protocol tick to avoid re-entrancy */
-    /* 由comm_app驱动协议tick，避免重复调用 */
-    uproto_tick(&proto_ctx);
-#endif
-		
-    // clamp raw receive values to configured bounds
-    if (aim_update->receive.yaw > MAX_YAW)   aim_update->receive.yaw = MAX_YAW;
-    else if (aim_update->receive.yaw < MIN_YAW)   aim_update->receive.yaw = MIN_YAW;
-
-    if (aim_update->receive.pitch > MAX_PITCH) aim_update->receive.pitch = MAX_PITCH;
-    else if (aim_update->receive.pitch < MIN_PITCH) aim_update->receive.pitch = MIN_PITCH;
-			
-    aim_update->shoot_delay = 0;
-    aim_update->yaw_delay = 0;
-    aim_update->pitch_delay = 0;
-		aim.last_fdb = HAL_GetTick();
+    uint32_t key;
+    if (aim_update == NULL) return;
+    key=__get_PRIMASK();__disable_irq();
+    aim_update->online=auto_aim_command_ready(HAL_GetTick());
+    /* Protocol tick is owned exclusively by COMM_APP. Never synthesize receive time. */
+    __set_PRIMASK(key);
 }
 
 void auto_aim_task(void const *pvParameters)
@@ -273,7 +305,7 @@ void auto_aim_task(void const *pvParameters)
         // [SYNC_FROM_H] Task loop now drives internal control tick each cycle
         auto_aim_set(&aim);
         auto_aim_feedback_update(&aim);
-        auto_aim_control_tick_internal(&aim);
+        auto_aim_control_tick(&aim);
 				debug_vofa[0] = aim.receive.pitch;
 				debug_vofa[1] = gimbal_control.gimbal_pitch_motor.relative_angle_set;
 				debug_vofa[2] = gimbal_control.gimbal_pitch_motor.relative_angle;
@@ -291,36 +323,31 @@ void auto_aim_task(void const *pvParameters)
     }
 }
 
-static float dyaw_rad;
-static float dpitch_rad;
+
 
 void auto_aim_apply_delta_udeg(int32_t dyaw_udeg,
                                int32_t dpitch_udeg,
                                uint16_t status,
                                uint64_t ts_us)
 {
-    (void)status;
-    (void)ts_us;
-
-    // micro-degree -> rad
-    // float dyaw_rad   = ((float)dyaw_udeg)   * PI / 180000000.0f;
-    // float dpitch_rad = ((float)dpitch_udeg) * PI / 180000000.0f;
-	
-		dyaw_rad   = ((float)dyaw_udeg)   * PI / 180000000.0f;
-		dpitch_rad = ((float)dpitch_udeg) * PI / 180000000.0f;
-		
-    // Interpret host command directly as “需要转动的误差”（正误差 → 正向转动）
-    // [SYNC_FROM_H] Host deltas now feed internal controller instead of direct motor commands
-    s_auto_aim_ctrl.yaw_axis.err_rad   = dyaw_rad;
-    s_auto_aim_ctrl.pitch_axis.err_rad = dpitch_rad;
-
-    // keep auto-aim online / alive
-    aim.last_fdb = HAL_GetTick();
+    uint32_t key;
+    float yaw_error=((float)dyaw_udeg)*PI/180000000.0f;
+    float pitch_error=((float)dpitch_udeg)*PI/180000000.0f;
+    if (!isfinite(yaw_error) || !isfinite(pitch_error)) return;
+    key=__get_PRIMASK();__disable_irq();
+    s_auto_aim_rx.yaw_error=yaw_error;s_auto_aim_rx.pitch_error=pitch_error;
+    s_auto_aim_rx.status.last_rx_ms=HAL_GetTick();
+    s_auto_aim_rx.status.generation++;
+    s_auto_aim_rx.status.seen=1U;
+    s_auto_aim_rx.status.status=status;s_auto_aim_rx.status.host_ts_us=ts_us;
+    aim.last_fdb=s_auto_aim_rx.status.last_rx_ms;
+    __set_PRIMASK(key);
 }
 
 void auto_aim_control_tick(auto_aim_t *aim_loop)
 {
-    auto_aim_control_tick_internal(aim_loop);
+    uint32_t key=__get_PRIMASK();
+    __disable_irq();auto_aim_control_tick_internal(aim_loop);__set_PRIMASK(key);
 }
 
 // Core MCU-side control: error -> limited velocity -> per-cycle angle increment (rad)
@@ -333,6 +360,15 @@ static void auto_aim_control_tick_internal(auto_aim_t *aim_loop)
     }
 
     uint32_t now_ms = HAL_GetTick();
+    if (!auto_aim_command_ready(now_ms))
+    {
+        if (!auto_aim_local_ready(now_ms) || (s_auto_aim_rx.status.seen &&
+            (uint32_t)(now_ms-s_auto_aim_rx.status.last_rx_ms)>AUTO_AIM_TIMEOUT)) aim_loop->auto_aim_flag=AIM_OFF;
+        auto_aim_clear_history(aim_loop);return;
+    }
+    aim_loop->online=1U;
+    s_auto_aim_ctrl.yaw_axis.err_rad=s_auto_aim_rx.yaw_error;
+    s_auto_aim_ctrl.pitch_axis.err_rad=s_auto_aim_rx.pitch_error;
     float dt_s;
     if (s_auto_aim_ctrl.last_tick_ms == 0U)
     {
@@ -345,18 +381,6 @@ static void auto_aim_control_tick_internal(auto_aim_t *aim_loop)
     }
     s_auto_aim_ctrl.last_tick_ms = now_ms;
     dt_s = aa_clamp(dt_s, 0.0005f, 0.02f); // 0.5–20 ms safety clamp
-
-    // When auto-aim is off or offline, do not inject motion
-    if (aim_loop->auto_aim_flag == AIM_OFF || !aim_loop->online)
-    {
-        s_auto_aim_ctrl.yaw_axis.omega_cmd_rad   = 0.0f;
-        s_auto_aim_ctrl.pitch_axis.omega_cmd_rad = 0.0f;
-        aim.receive.yaw   = 0.0f;
-        aim.receive.pitch = 0.0f;
-        mf5_reset(&yawfilter);
-        mf5_reset(&pitchfilter);
-        return;
-    }
 
     // Yaw axis: error -> omega_ref -> omega_cmd with accel limit -> angle increment
     {

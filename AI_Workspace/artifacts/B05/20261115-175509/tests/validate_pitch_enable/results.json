@@ -1,0 +1,7 @@
+{
+  "status": "0x600d",
+  "checks": 21,
+  "failure": 0,
+  "passed": true,
+  "scope": "2-second retry, ambiguous state 5 cannot confirm, queue failures, stale state recovery, finite retry budget"
+}

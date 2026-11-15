@@ -1,0 +1,17 @@
+
+Error: L6218E: Undefined symbol Error_Handler (referred from test_b03_gimbal_guard.o).
+Error: L6218E: Undefined symbol HAL_FDCAN_ActivateNotification (referred from test_b03_gimbal_guard.o).
+Error: L6218E: Undefined symbol HAL_FDCAN_ConfigFilter (referred from test_b03_gimbal_guard.o).
+Error: L6218E: Undefined symbol HAL_FDCAN_ConfigGlobalFilter (referred from test_b03_gimbal_guard.o).
+Error: L6218E: Undefined symbol HAL_FDCAN_Start (referred from test_b03_gimbal_guard.o).
+Error: L6218E: Undefined symbol get_INS_angle_point (referred from test_b03_gimbal_guard.o).
+Error: L6218E: Undefined symbol get_gyro_data_point (referred from test_b03_gimbal_guard.o).
+Error: L6218E: Undefined symbol gimbal_behaviour_control_set (referred from test_b03_gimbal_guard.o).
+Error: L6218E: Undefined symbol gimbal_behaviour_mode_set (referred from test_b03_gimbal_guard.o).
+Error: L6218E: Undefined symbol loop_float_constrain (referred from test_b03_gimbal_guard.o).
+Error: L6218E: Undefined symbol osDelay (referred from test_b03_gimbal_guard.o).
+Error: L6218E: Undefined symbol pitch_dm_cali_load (referred from test_b03_gimbal_guard.o).
+Error: L6218E: Undefined symbol remoter (referred from test_b03_gimbal_guard.o).
+Error: L6218E: Undefined symbol toe_is_error (referred from test_b03_gimbal_guard.o).
+Error: L6218E: Undefined symbol vTaskDelay (referred from test_b03_gimbal_guard.o).
+Finished: 0 information, 0 warning and 15 error messages.

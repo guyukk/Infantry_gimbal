@@ -64,11 +64,25 @@ typedef struct {
     uint16_t         yaw_delay;
     uint16_t         pitch_delay;
 
-    uint32_t         last_fdb;        // last feedback time (ms)
+    uint32_t         last_fdb;        // Valid DELTA receive time only; tick zero is valid.
     const RC_ctrl_t *aim_rc;
 } auto_aim_t;
 
 extern auto_aim_t aim;
+#define AUTO_AIM_HEALTH_API 1
+typedef struct {
+    uint32_t last_rx_ms, generation;
+    uint64_t host_ts_us;
+    uint16_t status;
+    uint8_t seen;
+} auto_aim_rx_status_t;
+void auto_aim_init(auto_aim_t *state);
+void auto_aim_set(auto_aim_t *state);
+void auto_aim_feedback_update(auto_aim_t *state);
+void auto_aim_cancel(void);
+uint8_t auto_aim_is_ready(void);
+fp32 auto_aim_take_increment(uint8_t pitch);
+void auto_aim_rx_status(auto_aim_rx_status_t *out);
 
 extern void auto_aim_task(void const *pvParameters);
 extern void auto_aim_loop(auto_aim_t *aim_loop);

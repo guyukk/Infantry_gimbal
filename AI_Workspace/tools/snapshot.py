@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
-from project_paths import ROOT, PROJECTS, build_artifact, project_path
+from project_paths import ROOT, PROJECTS, CONFIG, build_artifact, project_path
 EXTENSIONS = {".c", ".h", ".cpp", ".hpp", ".s", ".lib", ".uvprojx",
               ".uvoptx", ".ioc", ".ld", ".sct", ".bat", ".cmake"}
 SKIP = {".git", ".vscode", ".agents", ".codex", "preparation", "AI_Workspace",
@@ -54,7 +54,43 @@ def project_inventory(root, project):
     return targets, rows
 
 
+def preflight():
+    """Validate every configured project before any evidence directory is created.
+
+    Returns {name: (targets, rows)}. Raises SystemExit listing all problems so a
+    broken path can never produce a snapshot that silently omits this board.
+    """
+    problems = []
+    inventory = {}
+    for name, (root, project) in PROJECTS.items():
+        if not root.is_dir():
+            problems.append("%s: project root missing: %s" % (name, root))
+            continue
+        if not (root / project).is_file():
+            problems.append("%s: project file missing: %s" % (name, root / project))
+            continue
+        try:
+            targets, rows = project_inventory(root, project)
+        except Exception as error:  # malformed or unreadable project file
+            problems.append("%s: cannot read project: %r" % (name, error))
+            continue
+        target_names = [item["target"] for item in targets]
+        if CONFIG["projects"][name]["target"] not in target_names:
+            problems.append("%s: Target %r not declared (declared: %s)"
+                            % (name, CONFIG["projects"][name]["target"], target_names))
+            continue
+        missing = [row for row in rows if row["enabled"] and not row["exists"]]
+        if missing:
+            problems.append("%s: %d enabled Keil entries missing, first: %s"
+                            % (name, len(missing), missing[0]["path"]))
+        inventory[name] = (targets, rows)
+    if problems:
+        raise SystemExit("Snapshot preflight failed, nothing written:\n  " + "\n  ".join(problems))
+    return inventory
+
+
 def capture(output):
+    inventory = preflight()
     if output.exists():
         # A build may have created this new stage first. Never overwrite a
         # captured snapshot or accept arbitrary pre-existing stage contents.
@@ -71,7 +107,7 @@ def capture(output):
         with zipfile.ZipFile(output / (name + "-sources.zip"), "w", zipfile.ZIP_DEFLATED) as archive:
             for path in paths:
                 archive.write(path, path.relative_to(root).as_posix())
-        targets, rows = project_inventory(root, project)
+        targets, rows = inventory[name]
         with (output / (name + "-keil-files.csv")).open("w", encoding="utf-8-sig", newline="") as stream:
             writer = csv.DictWriter(stream, fieldnames=["target", "group", "path", "exists", "enabled"])
             writer.writeheader()

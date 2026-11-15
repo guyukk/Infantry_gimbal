@@ -1,0 +1,5 @@
+{"status": "0x600d", "checks": 134, "failure": 0, "passed": true, "scope": "real firmware .c and headers; HAL/transport/RTOS stand-ins; no device or scheduler timing", "mode": "release"}
+{"status": "0x600d", "checks": 36, "failure": 0, "passed": true, "scope": "real firmware .c and headers; HAL/transport/RTOS stand-ins; no device or scheduler timing", "mode": "release", "compiled_robot_mode": 1}
+{"status": "0x600d", "checks": 29, "failure": 0, "passed": true, "scope": "real firmware .c and headers; HAL/transport/RTOS stand-ins; no device or scheduler timing", "mode": "release"}
+{"status": "0x600d", "checks": 16, "failure": 0, "passed": true, "scope": "real firmware .c and headers; HAL/transport/RTOS stand-ins; no device or scheduler timing", "mode": "release", "compiled_robot_mode": 1}
+{"status": "0x600d", "checks": 27, "failure": 0, "passed": true, "scope": "real firmware .c and headers; HAL/transport/RTOS stand-ins; no device or scheduler timing", "mode": "release", "compiled_robot_mode": 1}

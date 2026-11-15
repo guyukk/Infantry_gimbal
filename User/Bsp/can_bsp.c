@@ -1,3 +1,4 @@
+#include "health.h"
 #include "can_bsp.h"
 #include "fdcan.h"
 #include "string.h"
@@ -146,6 +147,11 @@ const dji_measure_t *get_fric2__motor_measure_point(void){
   */
 void CAN_cmd_gimbal(int16_t yaw, int16_t pitch, int16_t shoot, int16_t rev)
 {
+    uint32_t now=HAL_GetTick();
+    if (!health_gate_ready(HEALTH_GATE_YAW,HEALTH_YAW_MASK|health_gate_mask(HEALTH_GATE_YAW),now)) yaw=0;
+    if (!health_gate_ready(HEALTH_GATE_SHOOT,HEALTH_SHOOT_MASK,now)) shoot=0;
+    pitch=0; rev=0; /* Unused DJI slots; Pitch has its own DM MIT frame. */
+
     gimbal_can_send_data[0] = (yaw >> 8);
     gimbal_can_send_data[1] = yaw;
     gimbal_can_send_data[2] = (pitch >> 8);
@@ -209,6 +215,8 @@ void CAN_cmd_chassis_6020(int16_t motor1, int16_t motor2, int16_t motor3, int16_
   */
 void CAN_cmd_friction(int16_t motor1, int16_t motor2, int16_t motor3, int16_t motor4)
 {
+    if (!health_gate_ready(HEALTH_GATE_SHOOT,HEALTH_SHOOT_MASK,HAL_GetTick())) motor1=motor2=motor3=motor4=0;
+
     shoot_can_send_data[0] = motor1 >> 8;
     shoot_can_send_data[1] = motor1;
     shoot_can_send_data[2] = motor2 >> 8;
@@ -245,6 +253,14 @@ uint8_t CAN_cmd_MIT(FDCAN_HandleTypeDef *hcan, uint16_t id, const dm_measure_t *
 		return (uint8_t)HAL_ERROR;
 	}
 
+    dm_measure_t safe;
+    if (id == DM_M3_ID && hcan->Instance == GIMBAL_CAN.Instance &&
+        !health_gate_ready(HEALTH_GATE_PITCH,HEALTH_PITCH_MASK|health_gate_mask(HEALTH_GATE_PITCH),HAL_GetTick()))
+    {
+        safe=*motor;
+        safe.set.POS=safe.set.VEL=safe.set.KP=safe.set.KD=safe.set.TOR=0.0f;
+        motor=&safe;
+    }
 	pos_tmp = dm_mit_encode(motor->set.POS, motor->param.P_MIN, motor->param.P_MAX, 16);
 	vel_tmp = dm_mit_encode(motor->set.VEL, motor->param.V_MIN, motor->param.V_MAX, 12);
 	kp_tmp = dm_mit_encode(motor->set.KP, motor->param.KP_MIN, motor->param.KP_MAX, 12);
@@ -483,7 +499,11 @@ uint8_t canx_send_data(FDCAN_HandleTypeDef *hcan, uint16_t id, uint8_t *data, ui
 	TxHeader.MessageMarker = 0;
 
 	// 发送CAN指令
-	return (uint8_t)HAL_FDCAN_AddMessageToTxFifoQ(hcan, &TxHeader, data);
+    {
+        uint8_t status=(uint8_t)HAL_FDCAN_AddMessageToTxFifoQ(hcan,&TxHeader,data);
+        health_bus_tx(hcan->Instance == FDCAN1 ? 0U : 1U,status == HAL_OK);
+        return status;
+    }
 }
 
 /**
@@ -493,63 +513,42 @@ uint8_t canx_send_data(FDCAN_HandleTypeDef *hcan, uint16_t id, uint8_t *data, ui
  * @param  hcan        CAN 句柄
  * @param  RxFifo0ITs  中断标志
  */
+
+/* Only current-vehicle motor feedback can publish health. Wrong-bus IDs are ignored. */
+static uint8_t can_motor_feedback(FDCAN_HandleTypeDef *hcan, const FDCAN_RxHeaderTypeDef *header, const uint8_t *data)
+{
+    uint8_t index, source;
+    uint32_t id=header->Identifier, now=HAL_GetTick();
+    if (header->IdType != FDCAN_STANDARD_ID || header->RxFrameType != FDCAN_DATA_FRAME ||
+        header->DataLength != FDCAN_DLC_BYTES_8) return 0U;
+    if (hcan->Instance == GIMBAL_CAN.Instance && id == DM_M3_ID)
+    {
+        if ((data[0]&0x0FU) != (DM_M3_ID&0x0FU)) return 0U;
+        DMFdbData(&DM_MOTOR_MEASURE[2],data,2U);
+        DM_MOTOR_MEASURE[2].fdb.last_fdb_time=now;
+        if (DM_MOTOR_MEASURE[2].fdb.state == 1U || DM_MOTOR_MEASURE[2].fdb.state == 5U)
+            health_touch(HEALTH_PITCH,now);
+        else health_reject(HEALTH_PITCH);
+        return 1U;
+    }
+    if (hcan->Instance == GIMBAL_CAN.Instance && id == CAN_YAW_MOTOR_ID) { index=4U; source=HEALTH_YAW; }
+    else if (hcan->Instance == GIMBAL_CAN.Instance && id == CAN_TRIGGER_MOTOR_ID) { index=6U; source=HEALTH_TRIGGER; }
+    else if (hcan->Instance == FRICTION_CAN.Instance && id == CAN_3508_M1_ID) { index=0U; source=HEALTH_FRIC1; }
+    else if (hcan->Instance == FRICTION_CAN.Instance && id == CAN_3508_M2_ID) { index=1U; source=HEALTH_FRIC2; }
+    else return 0U;
+    if (((uint16_t)(data[0]<<8 | data[1])) >= 8192U) return 0U;
+    get_motor_measure(&DJI_MOTOR_MEASURE[index],data);
+    DJI_MOTOR_MEASURE[index].last_fdb_time=now;
+    health_touch(source,now);
+    return 1U;
+}
+
 void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hcan, uint32_t RxFifo0ITs)
 {
-	if((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET)
-	{
-		if(hcan->Instance == FDCAN1)
-		{
-			HAL_FDCAN_GetRxMessage(hcan, FDCAN_RX_FIFO0, &RxHeader1, g_Can1RxData);
-			uint32_t fdb_time = HAL_GetTick();
-			switch (RxHeader1.Identifier)
-			{
-				case DM_M1_ID:
-				case DM_M2_ID:
-				case DM_M3_ID:
-				case DM_M4_ID:
-				case DM_M5_ID:
-				case DM_M6_ID:
-				case DM_M7_ID:
-				case DM_M8_ID:	
-				{
-					// Calculate motor index from CAN ID offset
-					can1_cnt = RxHeader1.Identifier - DM_M1_ID;
-					if(can1_cnt > 7){
-						can1_cnt = 0;
-						return;
-					}
-					DMFdbData(&DM_MOTOR_MEASURE[can1_cnt], g_Can1RxData, can1_cnt);
-					DM_MOTOR_MEASURE[can1_cnt].fdb.last_fdb_time = fdb_time;
-					break;
-				}
-          
-				case CAN_3508_M1_ID:
-				case CAN_3508_M2_ID:
-				case CAN_3508_M3_ID:
-				case CAN_3508_M4_ID:
-				case CAN_YAW_MOTOR_ID:
-				case CAN_TRIGGER_MOTOR_ID:
-				{
-					// Calculate motor index from CAN ID offset
-					can1_cnt = RxHeader1.Identifier - CAN_3508_M1_ID;
-					if(can1_cnt > 7)
-					{
-						can1_cnt = 0;
-						return;
-					}
-					get_motor_measure(&DJI_MOTOR_MEASURE[can1_cnt], g_Can1RxData);
-					
-					DJI_MOTOR_MEASURE[can1_cnt].last_fdb_time = fdb_time;
-					break;
-				}
-
-				default:
-				{
-					break;
-				}
-			}
-		}
-	}
+    if ((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) == 0U || hcan->Instance != FDCAN1) return;
+    if (HAL_FDCAN_GetRxMessage(hcan,FDCAN_RX_FIFO0,&RxHeader1,g_Can1RxData) != HAL_OK)
+        { health_bus_rx(0U,0U); return; }
+    health_bus_rx(0U,can_motor_feedback(hcan,&RxHeader1,g_Can1RxData));
 }
 
 /**
@@ -560,60 +559,10 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hcan, uint32_t RxFifo0ITs)
  */
 void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hcan, uint32_t RxFifo1ITs)
 {
-	if((RxFifo1ITs & FDCAN_IT_RX_FIFO1_NEW_MESSAGE) != RESET)
-	{
-		if(hcan->Instance == FDCAN2)
-		{
-			HAL_FDCAN_GetRxMessage(hcan, FDCAN_RX_FIFO1, &RxHeader2, g_Can2RxData);
-			uint32_t fdb_time = HAL_GetTick();
-			switch (RxHeader2.Identifier)
-			{					
-				case DM_M1_ID:
-				case DM_M2_ID:
-				case DM_M3_ID:
-				case DM_M4_ID:
-				case DM_M5_ID:
-				case DM_M6_ID:
-				case DM_M7_ID:
-				case DM_M8_ID:	
-				{
-					// Calculate motor index from CAN ID offset
-					can2_cnt = RxHeader2.Identifier - DM_M1_ID;
-					if(can2_cnt > 7)
-					{
-						can2_cnt = 0;
-						return;
-					}
-					DMFdbData(&DM_MOTOR_MEASURE[can2_cnt], g_Can2RxData, can2_cnt);
-					DM_MOTOR_MEASURE[can2_cnt].fdb.last_fdb_time = fdb_time;
-					break;
-				}
-
-				case CAN_3508_M1_ID:
-				case CAN_3508_M2_ID:
-				case CAN_3508_M3_ID:
-				case CAN_3508_M4_ID:
-				case CAN_YAW_MOTOR_ID:
-				case CAN_TRIGGER_MOTOR_ID:
-				{
-					// Calculate motor index from CAN ID offset
-					can2_cnt = RxHeader2.Identifier - CAN_3508_M1_ID;
-					if(can2_cnt > 7){
-						can2_cnt = 0;
-						return;
-					}
-					get_motor_measure(&DJI_MOTOR_MEASURE[can2_cnt], g_Can2RxData);
-					DJI_MOTOR_MEASURE[can2_cnt].last_fdb_time = fdb_time;
-					break;
-				}
-
-				default:
-				{
-					break;
-				}
-			}
-		}
-	}
+    if ((RxFifo1ITs & FDCAN_IT_RX_FIFO1_NEW_MESSAGE) == 0U || hcan->Instance != FDCAN2) return;
+    if (HAL_FDCAN_GetRxMessage(hcan,FDCAN_RX_FIFO1,&RxHeader2,g_Can2RxData) != HAL_OK)
+        { health_bus_rx(1U,0U); return; }
+    health_bus_rx(1U,can_motor_feedback(hcan,&RxHeader2,g_Can2RxData));
 }
 
 float uint_to_float(int x_int, float x_min, float x_max, int bits)

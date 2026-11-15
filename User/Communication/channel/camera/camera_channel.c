@@ -106,9 +106,7 @@ void camera_channel_init(camera_channel_t *cam,
 void camera_channel_trigger(camera_channel_t *cam)
 {
     if (!cam) return;
-#if !defined(CAM_EVENT_PUBLISH_ENABLE) || !(CAM_EVENT_PUBLISH_ENABLE)
-    return;
-#endif
+#if defined(CAM_EVENT_PUBLISH_ENABLE) && CAM_EVENT_PUBLISH_ENABLE
     uint64_t ts = 0;
     if (cam->now_us) ts = cam->now_us(cam->time_user);
     cam_evt_t evt; evt.frame_id = cam->next_frame_id++; evt.ts_us = ts;
@@ -120,6 +118,7 @@ void camera_channel_trigger(camera_channel_t *cam)
     uint16_t len = camera_pack_event(buf, CAM_SID_EVENT, evt.frame_id, evt.ts_us);
     (void)ch_uproto_queue_notify(cam->bind, cam->ch_id, CAM_SID_EVENT, 0, buf, len);
     if (cam->hooks.on_event) cam->hooks.on_event(cam, evt.frame_id, evt.ts_us, cam->hooks.user);
+#endif
 }
 
 /**

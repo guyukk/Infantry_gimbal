@@ -1,4 +1,7 @@
-"""Run the active Pitch MIT packer and send gate under ARMCC/Unicorn."""
+"""Focused Pitch MIT packing/position checks. B03 health/PID recovery is a fixture
+here and is exercised with real sources by validate_b03_health.py instead.
+Legacy timestamp fixtures use zero as not-fed; actual tick-zero seen is tested there.
+"""
 
 import argparse
 import json
@@ -32,7 +35,7 @@ def harness_source():
     return r'''
 #include <stdint.h>
 #include <stddef.h>
-typedef struct { int unused; } FDCAN_HandleTypeDef;
+typedef struct { void *Instance; } FDCAN_HandleTypeDef;
 typedef struct {
     struct { int id, state; float pos; uint32_t last_fdb_time; } fdb;
     struct { float KP, KD, POS, VEL, TOR; } set;
@@ -77,6 +80,16 @@ gimbal_control_t control;
 RC_ctrl_t rc_ctrl;
 struct { uint32_t status, checks, failure; float observed_target; } test_result;
 uint32_t HAL_GetTick(void) { return fake_tick; }
+enum { DM_M3_ID=0x53, HEALTH_RC=0, HEALTH_PITCH=4, HEALTH_GATE_PITCH=2, HEALTH_PITCH_MASK=17 };
+/* This test isolates serialization/position logic, not the final actuator gate. */
+uint32_t health_gate_mask(uint8_t gate) { (void)gate; return 0U; }
+uint8_t health_gate_ready(uint8_t gate,uint32_t mask,uint32_t now)
+{ (void)gate;(void)mask;(void)now;return 1U; }
+uint8_t gimbal_axis_ready(gimbal_control_t *c,uint8_t pitch) { (void)c;(void)pitch;return 1U; }
+uint8_t health_fresh(uint8_t source,uint32_t now) {
+    uint32_t stamp=source==HEALTH_RC ? rc_ctrl.last_fdb : motor.fdb.last_fdb_time;
+    return stamp!=0U && (uint32_t)(now-stamp)<=100U;
+}
 uint8_t canx_send_data(FDCAN_HandleTypeDef *hcan, uint16_t id, uint8_t *data, uint32_t len)
 { (void)hcan; (void)data; if (len != 8) return HAL_ERROR; last_can_id = id; send_count++; return 0; }
 static uint16_t dm_mit_encode(float value, float lower, float upper, uint8_t bits)

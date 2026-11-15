@@ -1,0 +1,7 @@
+{
+  "name": "b02-chassis-rx",
+  "status": "0x600d",
+  "checks": 178,
+  "failure": 0,
+  "passed": true
+}

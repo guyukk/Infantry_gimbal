@@ -24,7 +24,7 @@ def harness_source():
     if not match:
         raise RuntimeError("Missing PITCH_DM_LOWER_RECOVERY_RAD")
     names = ("pitch_dm_cali_check", "pitch_dm_cali_valid_range",
-             "pitch_dm_cali_read_record", "pitch_dm_cali_recover")
+             "pitch_dm_cali_read_record", "pitch_cali_feedback", "pitch_dm_cali_recover")
     bodies = {name: cali[name] for name in names}
     return r'''
 #include <stdint.h>
@@ -37,15 +37,17 @@ def harness_source():
 ''' + "#define PITCH_DM_LOWER_RECOVERY_RAD " + match.group(1) + r'''
 #define PITCH_MIT_FEEDBACK_TIMEOUT_MS 100U
 #define PITCH_DM_MOTOR_INDEX 2
+#define PITCH_DM_CAN_ID 0x53
+#define HEALTH_PITCH 4
 #define isfinite(x) ((x) == (x))
 typedef struct { uint32_t magic, version; float min_pos, max_pos; uint32_t check; }
     pitch_dm_cali_record_t;
 typedef struct {
-    uint8_t request, captured, stored_valid, init_done;
+    uint8_t request, captured, stored_valid, saved_pending, init_done;
     int8_t result;
     float first_pos, second_pos, min_pos, max_pos;
 } pitch_dm_cali_status_t;
-typedef struct { struct { float pos; uint32_t last_fdb_time; } fdb; } dm_measure_t;
+typedef struct { struct { float pos,vel; uint32_t last_fdb_time; uint8_t state,id; } fdb; } dm_measure_t;
 typedef struct { float min_pos, max_pos, target; } gimbal_control_t;
 static uint8_t pitch_dm_flash_ready;
 static uint8_t calibration_flash_ready;
@@ -78,6 +80,11 @@ void pitch_dm_apply_calibration(gimbal_control_t *control,
 }
 #define taskENTER_CRITICAL() (++critical_depth)
 #define taskEXIT_CRITICAL() (--critical_depth)
+/* Focused cold-start chain: health availability is controlled from the fixture's
+ * motor timestamps. Full real health/Flash integration is test_b05_persistence.c. */
+uint8_t health_fresh(uint8_t id,uint32_t now){(void)id;return motor.fdb.last_fdb_time && now-motor.fdb.last_fdb_time<=100;}
+static uint8_t pitch_cali_feedback(dm_measure_t *out)
+''' + bodies["pitch_cali_feedback"] + r'''
 static uint32_t pitch_dm_cali_check(const pitch_dm_cali_record_t *record)
 ''' + bodies["pitch_dm_cali_check"] + r'''
 static uint8_t pitch_dm_cali_valid_range(float min_pos, float max_pos)
@@ -101,6 +108,7 @@ void test_entry(void) {
     stored_record.min_pos = -2.79f;
     stored_record.max_pos = -2.3f;
     stored_record.check = pitch_dm_cali_check(&stored_record);
+    motor.fdb.state=1; motor.fdb.id=3; motor.fdb.vel=0;
     motor.fdb.pos = -2.5f;
     motor.fdb.last_fdb_time = 1000;
     fake_tick = 1000;

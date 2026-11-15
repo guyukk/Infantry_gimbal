@@ -1,0 +1,8 @@
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\calibrate_task.c", line 556: Warning:  #177-D: variable "GYRO_FLAG"  was declared but never referenced
+      static const uint8_t GYRO_FLAG    = 3;
+                           ^
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\User\APP\calibrate_task.c", line 557: Warning:  #177-D: variable "CHASSIS_FLAG"  was declared but never referenced
+      static const uint8_t CHASSIS_FLAG = 4;
+                           ^
+D:\文档\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_calibration.c: 2 warnings, 0 errors
+

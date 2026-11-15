@@ -3,7 +3,8 @@
 
 #include <stdint.h>
 
-/* ---------- H723 单 Bank 1 MB 扇区地址 ---------- */
+/* Legacy internal-address constants below are NOT W25Q offsets.
+ * Active calibration uses byte offsets 0 and 0x1000 in the external W25Q64. */
 #define ADDR_FLASH_SECTOR_0     0x08000000UL
 #define ADDR_FLASH_SECTOR_1     0x08008000UL
 #define ADDR_FLASH_SECTOR_2     0x08010000UL
@@ -14,7 +15,9 @@
 #define ADDR_SECTOR_7           0x080C0000UL
 #define FLASH_END_ADDR          0x08100000UL
 
-/* 接口保持与原文件完全一致,地址已经乘上4了，所以 */
+/* Active read/write: byte address, len in 32-bit words, return 0/-1.
+ * A zero-length operation is a no-op. Writers erase touched sectors.
+ * Other legacy declarations below have no active implementation/consumer. */
 extern void flash_erase_address(uint32_t address, uint16_t len);
 extern int8_t flash_init(void);
 extern int8_t flash_write_single_address(uint32_t start_address, uint32_t *buf, uint32_t len);

@@ -1,0 +1,7 @@
+{
+  "name": "b02-before-chassis",
+  "status": "0x600d",
+  "checks": 4,
+  "failure": 2,
+  "before_passed_acceptance": false
+}

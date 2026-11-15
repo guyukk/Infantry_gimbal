@@ -1,4 +1,6 @@
-"""Execute the active Pitch mode transition and target limiter under ARMCC."""
+"""Focused Pitch transition/limit tests. B03 axis health/PID recovery and atomic
+aim consumption are fixtures here; real integrations use validate_b03_health.py.
+"""
 
 import argparse
 import json
@@ -92,6 +94,17 @@ void gimbal_motor_relative_angle_control(gimbal_motor_t *motor)
 void gimbal_PID_clear(int *pid) { (void)pid; ++yaw_pid_clears; }
 void PID_clear(int *pid) { (void)pid; ++yaw_pid_clears; }
 uint32_t HAL_GetTick(void) { return fake_tick; }
+enum { HEALTH_YAW=3 };
+uint8_t health_fresh(uint8_t source,uint32_t now) {
+    (void)source;return yaw_feedback.last_fdb_time!=0U &&
+        (uint32_t)(now-yaw_feedback.last_fdb_time)<=YAW_INIT_FEEDBACK_TIMEOUT_MS;
+}
+uint8_t gimbal_axis_ready(gimbal_control_t *control,uint8_t pitch) { (void)control;(void)pitch;return 1U; }
+fp32 auto_aim_take_increment(uint8_t pitch) {
+    fp32 value=pitch?aim.receive.pitch:aim.receive.yaw;
+    if(pitch) aim.receive.pitch=0; else aim.receive.yaw=0;
+    return value;
+}
 void gimbal_behaviour_control_set(fp32 *yaw, fp32 *pitch, gimbal_control_t *control)
 { (void)control; *yaw = 0.0f; *pitch = 0.0f; }
 void gimbal_absolute_angle_limit(gimbal_motor_t *motor, fp32 add)

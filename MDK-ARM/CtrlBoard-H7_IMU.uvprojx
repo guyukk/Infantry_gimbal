@@ -940,6 +940,16 @@
               <FilePath>..\User\APP\detect_task.c</FilePath>
             </File>
             <File>
+              <FileName>health.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\APP\health.c</FilePath>
+            </File>
+            <File>
+              <FileName>host_control.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\APP\host_control.c</FilePath>
+            </File>
+            <File>
               <FileName>gimbal_behaviour.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\User\APP\gimbal_behaviour.c</FilePath>

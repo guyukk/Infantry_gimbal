@@ -1,0 +1,7 @@
+{
+  "name": "b02-usb-busy-content",
+  "status": "0x600d",
+  "checks": 23,
+  "failure": 0,
+  "passed": true
+}

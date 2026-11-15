@@ -1,0 +1,31 @@
+{
+  "snapshot_integrity": "OK",
+  "changed_source_or_config": [
+    "gimbal:Core/Src/main.c",
+    "gimbal:USB_DEVICE/App/usbd_cdc_if.c",
+    "gimbal:User/APP/remote_control.c",
+    "gimbal:User/APP/remote_control.h",
+    "gimbal:User/Bsp/bsp_usart.c",
+    "gimbal:User/Bsp/bsp_usart.h",
+    "gimbal:User/Bsp/bsp_vofa+.c",
+    "gimbal:User/Bsp/bsp_vofa+.h",
+    "gimbal:User/Communication/example/device/comm_app.c",
+    "gimbal:User/Communication/example/device/usb_cdc_port.c",
+    "gimbal:User/Communication/example/device/usb_cdc_port.h"
+  ],
+  "keil_generated_changes": [],
+  "project_guidance_changes": [],
+  "manual_firmware_source_or_config_changes": [
+    "gimbal:Core/Src/main.c",
+    "gimbal:USB_DEVICE/App/usbd_cdc_if.c",
+    "gimbal:User/APP/remote_control.c",
+    "gimbal:User/APP/remote_control.h",
+    "gimbal:User/Bsp/bsp_usart.c",
+    "gimbal:User/Bsp/bsp_usart.h",
+    "gimbal:User/Bsp/bsp_vofa+.c",
+    "gimbal:User/Bsp/bsp_vofa+.h",
+    "gimbal:User/Communication/example/device/comm_app.c",
+    "gimbal:User/Communication/example/device/usb_cdc_port.c",
+    "gimbal:User/Communication/example/device/usb_cdc_port.h"
+  ]
+}

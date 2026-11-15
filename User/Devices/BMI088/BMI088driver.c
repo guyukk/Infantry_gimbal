@@ -378,8 +378,13 @@ uint8_t bmi088_gyro_init(void)
     return BMI088_NO_ERROR;
 }
 
+uint8_t BMI088_sample_valid;
 void BMI088_Read(IMU_Data_t *bmi088)
 {
+    uint8_t accel_id=0U, gyro_valid;
+    BMI088_sample_valid=0U;
+    BMI088_io_begin();
+    BMI088_accel_read_single_reg(BMI088_ACC_CHIP_ID,accel_id);
     static uint8_t buf[8] = {0, 0, 0, 0, 0, 0};
     static int16_t bmi088_raw_temp;
     
@@ -406,7 +411,8 @@ void BMI088_Read(IMU_Data_t *bmi088)
 		
 		//读取三轴角速度
     BMI088_gyro_read_muli_reg(BMI088_GYRO_CHIP_ID, buf, 8);
-    if (buf[0] == BMI088_GYRO_CHIP_ID_VALUE)
+    gyro_valid=(buf[0] == BMI088_GYRO_CHIP_ID_VALUE);
+    if (gyro_valid)
     {
         if (caliOffset)
         {
@@ -437,6 +443,7 @@ void BMI088_Read(IMU_Data_t *bmi088)
     }
 
     bmi088->Temperature = bmi088_raw_temp * BMI088_TEMP_FACTOR + BMI088_TEMP_OFFSET;
+    BMI088_sample_valid = BMI088_io_end() && gyro_valid && accel_id == BMI088_ACC_CHIP_ID_VALUE;
 }
 
 #if defined(BMI088_USE_SPI)

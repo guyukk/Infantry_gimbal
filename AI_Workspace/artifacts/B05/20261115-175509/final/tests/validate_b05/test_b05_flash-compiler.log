@@ -1,0 +1,5 @@
+"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_flash.c", line 5: Warning:  #550-D: variable "last_addr"  was set but never used
+  static uint32_t erases,reads,writes,last_len,last_addr;
+                                               ^
+D:\文档\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b05_flash.c: 1 warning, 0 errors
+

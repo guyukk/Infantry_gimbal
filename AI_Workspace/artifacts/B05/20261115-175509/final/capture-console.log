@@ -1,0 +1,15 @@
+{
+  "label": "B05-final",
+  "repo_root": "D:\\ÎÄµµ\\Printk\\bubing\\gimbal\\Infantry_gimbal",
+  "captured_file_count": 1290,
+  "captured_bytes": 125973175,
+  "indexed_file_count": 15144,
+  "git": {
+    "head": "17880289d097c03b2c26ac080311d2d7183d5d2a",
+    "branch": "main",
+    "head_reachable": true,
+    "status_entries": 784,
+    "diff_bytes": 167313
+  },
+  "sources_zip_sha256": "2b75fd7d9b4ce9417e660f1b1a0eda6fe238a1f0cb9f6d1bdc22da5fc0d4cc2d"
+}

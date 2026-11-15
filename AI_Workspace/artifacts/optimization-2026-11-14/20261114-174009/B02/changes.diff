@@ -1,0 +1,2655 @@
+diff --git a/AI_Workspace/tools/validate_runtime.py b/AI_Workspace/tools/validate_runtime.py
+index 35b4066..db4b766 100644
+--- a/AI_Workspace/tools/validate_runtime.py
++++ b/AI_Workspace/tools/validate_runtime.py
+@@ -28,7 +28,7 @@ DEFAULT_RESULTS = ARTIFACTS / "validation/gimbal-runtime"
+ 
+ def source():
+     sender = functions(preprocess(ROOT, PROJECT, "User/APP/message_task.c", "gimbal"))["send_data_to_chassis"]
+-    receiver = functions(preprocess(ROOT, PROJECT, "User/Bsp/bsp_usart.c", "gimbal"))["chassis_to_gimbal"]
++    receiver = functions(preprocess(ROOT, PROJECT, "User/Bsp/bsp_usart.c", "gimbal"))["chassis_frame_parse"]
+     neutral = functions(preprocess(ROOT, PROJECT, "User/APP/video_transmission_module.c", "gimbal"))["vtm_data_init"]
+     constrain = functions(read_source(ROOT / "User/Lib/user_lib.c"))["loop_float_constrain"]
+     header = without_comments(read_source(ROOT / "User/APP/video_transmission_module.h"))
+@@ -39,6 +39,7 @@ def source():
+ #include <stdint.h>
+ #include <stddef.h>
+ #include <string.h>
++#include <math.h>
+ typedef float fp32;
+ typedef union { float fp32; uint8_t bytes[4]; } fp32_to_bytes;
+ ''' + packed + r'''
+@@ -49,11 +50,18 @@ struct { struct { float radian_of_ecd; } gimbal_yaw_motor; } gimbal_control;
+ typedef struct { uint8_t shoot_mode; } shoot_control_t;
+ shoot_control_t shoot_control;
+ uint8_t gimbal_behaviour;
+-struct {
++typedef struct {
+   float chassis_vx, chassis_vy, chassis_wz;
+   float chassis_yaw, chassis_pitch, chassis_roll, cap_voltage;
+   uint8_t chassis_mode, robot_id;
+-} chassis_data;
++} chassis_data_t;
++#define CHASSIS_DATA_LENGTH 28
++#define CHASSIS_FRAME_HEAD 's'
++#define CHASSIS_FRAME_TAIL 'e'
++#define CHASSIS_ANGLE_LIMIT_RAD 3.2f
++#define CHASSIS_SPEED_LIMIT_MPS 10.0f
++#define CHASSIS_WZ_LIMIT_RADPS 50.0f
++#define CHASSIS_MODE_MAX 2u
+ float ins_angles[3];
+ float *get_INS_angle_point(void) { return ins_angles; }
+ uint8_t frame46[46];
+@@ -65,7 +73,7 @@ void USART1_Transmit_DMA(uint8_t *bytes, uint16_t size) {
+ float loop_float_constrain(float Input, float minValue, float maxValue)''' + constrain + "\n" + (
+         "void vtm_data_init(void)" + neutral + "\n"
+         "void send_data_to_chassis(void)" + sender + "\n"
+-        "void chassis_to_gimbal(uint8_t *data_chassis)" + receiver + "\n"
++        "static uint8_t chassis_frame_parse(const uint8_t *frame, chassis_data_t *out)" + receiver + "\n"
+     ) + r'''
+ volatile struct { uint32_t status, checks, failure; } test_result;
+ __asm void stop_test(void) {
+@@ -107,12 +115,14 @@ void test_entry(void) {
+   expected = -0.25f; memcpy(incoming + 19, &expected, 4);
+   expected = 0.75f; memcpy(incoming + 23, &expected, 4);
+   incoming[27] = 'e';
+-  chassis_to_gimbal(incoming);
+-  check(chassis_data.chassis_yaw == 0.125f && chassis_data.chassis_pitch == -1.0f &&
+-        chassis_data.chassis_roll == 0.5f, 11);
+-  check(chassis_data.chassis_mode == 2 && chassis_data.robot_id == 103, 12);
+-  check(chassis_data.chassis_vx == 1.0f && chassis_data.chassis_vy == -0.25f &&
+-        chassis_data.chassis_wz == 0.75f, 13);
++  chassis_data_t parsed;
++  memset(&parsed, 0, sizeof(parsed));
++  check(chassis_frame_parse(incoming, &parsed) == 0, 11);
++  check(parsed.chassis_yaw == 0.125f && parsed.chassis_pitch == -1.0f &&
++        parsed.chassis_roll == 0.5f, 12);
++  check(parsed.chassis_mode == 2 && parsed.robot_id == 103, 13);
++  check(parsed.chassis_vx == 1.0f && parsed.chassis_vy == -0.25f &&
++        parsed.chassis_wz == 0.75f, 14);
+   test_result.status = 0x600D;
+   stop_test();
+ }
+diff --git a/Core/Src/main.c b/Core/Src/main.c
+index fef4b88..909a84c 100644
+--- a/Core/Src/main.c
++++ b/Core/Src/main.c
+@@ -170,9 +170,8 @@ int main(void)
+ 	HAL_UART_Receive_DMA(&huart7, usart7_buf, 21);
+ 	/* USART10 RX is owned by TFmini; init handled in comm_app to avoid buffer overrun. */
+ 	
+-	HAL_UARTEx_ReceiveToIdle_DMA(&huart5, remote_buff, SBUS_RX_BUF_NUM);
+-	extern uint8_t gimbal_receive_data[CHASSIS_DATA_LENGTH];
+-	HAL_UARTEx_ReceiveToIdle_DMA(&huart1, gimbal_receive_data, CHASSIS_DATA_LENGTH);
++	/* USART1/UART5 接收由 bsp_usart 统一启动（单一所有者，P01/P03） */
++	bsp_usart_rx_start();
+ 	
+ 	HAL_ADCEx_Calibration_Start(&hadc3, ADC_CALIB_OFFSET, ADC_SINGLE_ENDED);
+ 	HAL_ADCEx_Calibration_Start(&hadc1, ADC_CALIB_OFFSET, ADC_SINGLE_ENDED);
+diff --git a/USB_DEVICE/App/usbd_cdc_if.c b/USB_DEVICE/App/usbd_cdc_if.c
+index f1e33f5..6ad18bd 100644
+--- a/USB_DEVICE/App/usbd_cdc_if.c
++++ b/USB_DEVICE/App/usbd_cdc_if.c
+@@ -23,7 +23,7 @@
+ 
+ /* USER CODE BEGIN INCLUDE */
+ #include "crc8_crc16.h"
+-#include "..\\..\\User\\Communication\\core\\uproto.h" 
++#include "usb_cdc_port.h"
+ 
+ /* USER CODE END INCLUDE */
+ 
+@@ -98,12 +98,7 @@ uint8_t UserTxBufferHS[APP_TX_DATA_SIZE];
+ 
+ /* USER CODE BEGIN PRIVATE_VARIABLES */
+ 
+-//usb閹恒儲鏁归弫鎵�?,閸欐�??浣烘畱閸忋劌�?潻娆庣�?
+-uint8_t usb_buf[USB_SIZE];
+-uint16_t usb_buf_len = 0; // 瑜版挸澧犲鍙夋暪閸掍即鏆辨�??
+-static uint8_t  printf_buf[2];   // 1 鐎涙濡弫鐗堝�? + 1 閸楃姳缍?
+-static volatile uint8_t tx_done = 1; // 閸欐�??浣哥暚閹存劖鐖ｈ�??
+-
++/* USB 原始缓冲与打印缓冲已移除：协议字节流只经 usb_cdc_port 交接 */
+ 
+ /* USER CODE END PRIVATE_VARIABLES */
+ 
+@@ -120,8 +115,6 @@ extern USBD_HandleTypeDef hUsbDeviceHS;
+ 
+ /* USER CODE BEGIN EXPORTED_VARIABLES */
+ 
+-extern uproto_context_t proto_ctx;
+-
+ /* USER CODE END EXPORTED_VARIABLES */
+ 
+ /**
+@@ -275,14 +268,17 @@ static int8_t CDC_Control_HS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
+ static int8_t CDC_Receive_HS(uint8_t* Buf, uint32_t *Len)
+ {
+   /* USER CODE BEGIN 11 */
+-  /* Directly feed raw USB bytes to uproto; do not pre-filter/clear Buf */
++
++  /* Directly feed raw USB bytes to the bounded hand-off ring; the comm task
++     parses the protocol. Do not pre-filter/clear Buf. */
+   if (Len && *Len) {
+-    uproto_on_rx_bytes(&proto_ctx, Buf, *Len);
++    usb_cdc_port_on_rx(Buf, *Len);
+   }
+   USBD_CDC_SetRxBuffer(&hUsbDeviceHS, &Buf[0]);
+   USBD_CDC_ReceivePacket(&hUsbDeviceHS);
+   return (USBD_OK);
+-  /* USER CODE END 11 */
++
++/* USER CODE END 11 */
+ }
+ 
+ /**
+@@ -296,13 +292,21 @@ uint8_t CDC_Transmit_HS(uint8_t* Buf, uint16_t Len)
+ {
+   uint8_t result = USBD_OK;
+   /* USER CODE BEGIN 12 */
++
+   USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*)hUsbDeviceHS.pClassData;
++  if (Len == 0u || Buf == NULL) {
++    return USBD_FAIL;
++  }
++  if (hcdc == NULL) {
++    return USBD_FAIL;
++  }
+   if (hcdc->TxState != 0){
+     return USBD_BUSY;
+   }
+   USBD_CDC_SetTxBuffer(&hUsbDeviceHS, Buf, Len);
+   result = USBD_CDC_TransmitPacket(&hUsbDeviceHS);
+-  /* USER CODE END 12 */
++
++/* USER CODE END 12 */
+   return result;
+ }
+ 
+@@ -330,15 +334,6 @@ static int8_t CDC_TransmitCplt_HS(uint8_t *Buf, uint32_t *Len, uint8_t epnum)
+ }
+ 
+ /* USER CODE BEGIN PRIVATE_FUNCTIONS_IMPLEMENTATION */
+-int __io_putchar(int ch)
+-{
+-	
+-    if (hUsbDeviceHS.dev_state != USBD_STATE_CONFIGURED) return ch; // 閺堫亜姘ㄧ紒顏嗘纯閹恒儰�??
+-    printf_buf[0] = (uint8_t)ch;
+-    tx_done = 0;
+-    CDC_Transmit_HS(&printf_buf[0], 1); // 閹绘劒姘﹂崡鏇炵摟閼??
+-    return ch;
+-}
+ /* USER CODE END PRIVATE_FUNCTIONS_IMPLEMENTATION */
+ 
+ /**
+diff --git a/User/APP/remote_control.c b/User/APP/remote_control.c
+index 1556a18..307b797 100644
+--- a/User/APP/remote_control.c
++++ b/User/APP/remote_control.c
+@@ -14,7 +14,6 @@
+   @endverbatim
+   ****************************(C) COPYRIGHT 2019 DJI****************************
+   **/
+-#include "detect_task.h"
+ #include "main.h"
+ #include "remote_control.h"
+ #include "robot_param.h"
+@@ -32,6 +31,11 @@ extern DMA_HandleTypeDef hdma_usart1_rx;
+ //遥控器控制变量
+ RC_ctrl_t rc_ctrl;
+ 
++/* 发布序号：奇数=写入中，偶数=稳定；ISR 单写者，任务侧用 rc_ctrl_snapshot 重试 */
++static volatile uint32_t rc_publish_seq;
++static uint32_t rc_frame_count;
++static rc_rx_stats_t rc_rx_stats;
++
+ //取正函数
+ static int16_t RC_abs(int16_t value)
+ {
+@@ -52,7 +56,7 @@ static int16_t RC_abs(int16_t value)
+   */
+ void remote_control_init(void)
+ {
+-		HAL_UARTEx_ReceiveToIdle_DMA(&huart5, remote_buff, SBUS_RX_BUF_NUM);
++	remote_control_rx_restart(&huart5);
+ }
+ 
+ /**
+@@ -112,38 +116,228 @@ error:
+     return 1;
+ }
+ 
++/*
++ * ============================================================================
++ * 步骤1：18 字节 DBUS 帧解析
++ * ============================================================================
++ * 数据源：一个完整 18 字节块（UART5，100000 8E2，18 字节 DBUS 分支）
++ * 操作：保持原有位域/偏移与中值换算不变，只把发布动作留给调用者
++ */
++static void rc_frame_parse(const uint8_t *sbus_buf, RC_ctrl_t *out)
++{
++	out->rc.ch[0] = (sbus_buf[0] | (sbus_buf[1] << 8)) & 0x07ff;        //!< Channel 0
++	out->rc.ch[1] = ((sbus_buf[1] >> 3) | (sbus_buf[2] << 5)) & 0x07ff; //!< Channel 1
++	out->rc.ch[2] = ((sbus_buf[2] >> 6) | (sbus_buf[3] << 2) |          //!< Channel 2
++	                 (sbus_buf[4] << 10)) & 0x07ff;
++	out->rc.ch[3] = ((sbus_buf[4] >> 1) | (sbus_buf[5] << 7)) & 0x07ff; //!< Channel 3
++	out->rc.s[0] = ((sbus_buf[5] >> 4) & 0x0003);                        //!< Right switch (gimbal mode)
++	out->rc.s[1] = ((sbus_buf[5] >> 4) & 0x000C) >> 2;                   //!< Left switch (shoot mode)
++	out->mouse.x = sbus_buf[6] | (sbus_buf[7] << 8);                     //!< Mouse X axis
++	out->mouse.y = sbus_buf[8] | (sbus_buf[9] << 8);                     //!< Mouse Y axis
++	out->mouse.z = sbus_buf[10] | (sbus_buf[11] << 8);                   //!< Mouse Z axis
++	out->mouse.press_l = sbus_buf[12];                                   //!< Mouse Left Is Press ?
++	out->mouse.press_r = sbus_buf[13];                                   //!< Mouse Right Is Press ?
++	out->key.v = sbus_buf[14] | (sbus_buf[15] << 8);                     //!< KeyBoard value
++	out->rc.ch[4] = sbus_buf[16] | (sbus_buf[17] << 8);                  //NULL
++
++	out->rc.ch[0] -= RC_CH_VALUE_OFFSET;
++	out->rc.ch[1] -= RC_CH_VALUE_OFFSET;
++	out->rc.ch[2] -= RC_CH_VALUE_OFFSET;
++	out->rc.ch[3] -= RC_CH_VALUE_OFFSET;
++	out->rc.ch[4] -= RC_CH_VALUE_OFFSET;
++	out->last_fdb = HAL_GetTick();
++}
++
+ /**
+-	* @brief          遥控器协议解析
+-	* @param[in]      sbus_buf: 原生数据指针
+-	* @param[out]     rc_ctrl: 遥控器数据指
++	* @brief          遥控器协议解析（兼容入口：解析但不做合法性判断）
++	* @param[in]      sbus_buf: 原生数据指针（18 字节）
++	* @param[out]     rc_ctrl: 遥控器数据指针
++	* @param[in]      remoter: 兼容参数（未使用）
+ 	* @retval         none
+ 	*/
+ void sbus_to_rc(uint8_t *sbus_buf, RC_ctrl_t *rc_ctrl, remoter_t *remoter)
+ {
+-		if (sbus_buf == NULL || rc_ctrl == NULL)
++	(void)remoter;
++	if (sbus_buf == NULL || rc_ctrl == NULL)
++	{
++		return;
++	}
++	rc_frame_parse(sbus_buf, rc_ctrl);
++	rc_ctrl->generation++;
++}
++
++/*
++ * ============================================================================
++ * 步骤2：帧合法性校验
++ * ============================================================================
++ * 操作：
++ * 1) 四通道原始值必须落在 ±700 失效门限内（raw 324..1724）
++ * 2) 两个开关必须是 1/2/3 的合法枚举，0 视为无效
++ * 返回：0=有效，2=通道越界，3=开关非法
++ */
++static uint8_t rc_frame_validate(const uint8_t *sbus_buf)
++{
++	uint16_t raw[4];
++	uint8_t sw0;
++	uint8_t sw1;
++	uint8_t index;
++
++	raw[0] = (uint16_t)((sbus_buf[0] | ((uint16_t)sbus_buf[1] << 8)) & 0x07FFu);
++	raw[1] = (uint16_t)((((uint16_t)sbus_buf[1] >> 3) | ((uint16_t)sbus_buf[2] << 5)) & 0x07FFu);
++	raw[2] = (uint16_t)((((uint16_t)sbus_buf[2] >> 6) | ((uint16_t)sbus_buf[3] << 2) |
++	                     ((uint16_t)sbus_buf[4] << 10)) & 0x07FFu);
++	raw[3] = (uint16_t)((((uint16_t)sbus_buf[4] >> 1) | ((uint16_t)sbus_buf[5] << 7)) & 0x07FFu);
++	sw0 = (uint8_t)((sbus_buf[5] >> 4) & 0x03u);
++	sw1 = (uint8_t)(((sbus_buf[5] >> 4) & 0x0Cu) >> 2);
++
++	for (index = 0U; index < 4U; index++)
++	{
++		if (!RC_CH_VALUE_VALID(raw[index]))
++		{
++			return 2U;
++		}
++	}
++	if (!RC_SWITCH_VALID(sw0) || !RC_SWITCH_VALID(sw1))
++	{
++		return 3U;
++	}
++	return 0U;
++}
++
++/*
++ * ============================================================================
++ * 步骤3：一致性发布
++ * ============================================================================
++ * 目标：ISR 单写者发布整帧；任务侧用序号快照避免读后清零丢新值
++ */
++static void rc_publish(const RC_ctrl_t *parsed)
++{
++	__DMB();
++	rc_publish_seq++;
++	__DMB();
++	rc_ctrl = *parsed;
++	rc_frame_count++;
++	rc_ctrl.generation = rc_frame_count;
++	__DMB();
++	rc_publish_seq++;
++	__DMB();
++}
++
++uint8_t rc_ctrl_snapshot(RC_ctrl_t *out, uint32_t *generation)
++{
++	uint32_t before;
++	uint32_t after;
++	uint32_t attempt;
++	if (out == NULL)
++	{
++		return 0U;
++	}
++	for (attempt = 0U; attempt < 8U; attempt++)
++	{
++		before = rc_publish_seq;
++		if ((before & 1U) != 0U)
+ 		{
+-				return;
++			continue;
+ 		}
+-		
+-		rc_ctrl->rc.ch[0] = (sbus_buf[0] | (sbus_buf[1] << 8)) & 0x07ff;        //!< Channel 0
+-		rc_ctrl->rc.ch[1] = ((sbus_buf[1] >> 3) | (sbus_buf[2] << 5)) & 0x07ff; //!< Channel 1
+-		rc_ctrl->rc.ch[2] = ((sbus_buf[2] >> 6) | (sbus_buf[3] << 2) |          //!< Channel 2
+-												 (sbus_buf[4] << 10)) &0x07ff;
+-		rc_ctrl->rc.ch[3] = ((sbus_buf[4] >> 1) | (sbus_buf[5] << 7)) & 0x07ff; //!< Channel 3
+-		rc_ctrl->rc.s[0] = ((sbus_buf[5] >> 4) & 0x0003);                  //!< Right switch on this remote (gimbal mode)
+-		rc_ctrl->rc.s[1] = ((sbus_buf[5] >> 4) & 0x000C) >> 2;            //!< Left switch on this remote (shoot mode)
+-		rc_ctrl->mouse.x = sbus_buf[6] | (sbus_buf[7] << 8);                    //!< Mouse X axis
+-		rc_ctrl->mouse.y = sbus_buf[8] | (sbus_buf[9] << 8);                    //!< Mouse Y axis
+-		rc_ctrl->mouse.z = sbus_buf[10] | (sbus_buf[11] << 8);                  //!< Mouse Z axis
+-		rc_ctrl->mouse.press_l = sbus_buf[12];                                  //!< Mouse Left Is Press ?
+-		rc_ctrl->mouse.press_r = sbus_buf[13];                                  //!< Mouse Right Is Press ?
+-		rc_ctrl->key.v = sbus_buf[14] | (sbus_buf[15] << 8);                    //!< KeyBoard value
+-		rc_ctrl->rc.ch[4] = sbus_buf[16] | (sbus_buf[17] << 8);                 //NULL
+-
+-		rc_ctrl->rc.ch[0] -= RC_CH_VALUE_OFFSET;
+-		rc_ctrl->rc.ch[1] -= RC_CH_VALUE_OFFSET;
+-		rc_ctrl->rc.ch[2] -= RC_CH_VALUE_OFFSET;
+-		rc_ctrl->rc.ch[3] -= RC_CH_VALUE_OFFSET;
+-		rc_ctrl->rc.ch[4] -= RC_CH_VALUE_OFFSET;
+-		rc_ctrl->last_fdb = HAL_GetTick();
++		__DMB();
++		*out = rc_ctrl;
++		__DMB();
++		after = rc_publish_seq;
++		if (before == after)
++		{
++			if (generation != NULL)
++			{
++				*generation = before >> 1;
++			}
++			return 1U;
++		}
++	}
++	return 0U;
++}
++
++/*
++ * ============================================================================
++ * 步骤4：DMA 块交接与整块策略
++ * ============================================================================
++ * 数据源：UART5 normal DMA + ReceiveToIdle 的每轮数据
++ * 策略：
++ * 1) 18 字节块 = 1 帧；36 字节块 = 2 帧
++ * 2) 其它长度（半帧/噪声）整块丢弃并计数，不发布、不刷新时间戳
++ * 3) 帧内校验失败只丢该帧，另一帧仍可独立通过（36 字节块）
++ */
++static void rc_try_frame(const uint8_t *frame)
++{
++	RC_ctrl_t parsed;
++	uint8_t verdict = rc_frame_validate(frame);
++
++	if (verdict == 2U)
++	{
++		rc_rx_stats.bad_channel++;
++		rc_rx_stats.discarded_bytes += RC_FRAME_LENGTH;
++		return;
++	}
++	if (verdict == 3U)
++	{
++		rc_rx_stats.bad_switch++;
++		rc_rx_stats.discarded_bytes += RC_FRAME_LENGTH;
++		return;
++	}
++	sbus_to_rc((uint8_t *)frame, &parsed, &remoter);
++	rc_publish(&parsed);
++	rc_rx_stats.frames_ok++;
++}
++
++void remote_control_rx_chunk(const uint8_t *data, uint16_t len)
++{
++	rc_rx_stats.chunks++;
++	if (data == NULL || len == 0U)
++	{
++		rc_rx_stats.rejected_chunks++;
++		return;
++	}
++	if (len == RC_FRAME_LENGTH)
++	{
++		rc_try_frame(data);
++	}
++	else if (len == (uint16_t)(2U * RC_FRAME_LENGTH))
++	{
++		rc_try_frame(data);
++		rc_try_frame(data + RC_FRAME_LENGTH);
++	}
++	else
++	{
++		rc_rx_stats.rejected_chunks++;
++		rc_rx_stats.discarded_bytes += len;
++	}
++}
++
++void remote_control_rx_restart(UART_HandleTypeDef *huart)
++{
++	if (huart == NULL)
++	{
++		return;
++	}
++	if (HAL_UARTEx_ReceiveToIdle_DMA(huart, remote_buff, SBUS_RX_BUF_NUM) == HAL_OK)
++	{
++		rc_rx_stats.restarts++;
++	}
++}
++
++void remote_control_rx_overflow(void)
++{
++	rc_rx_stats.overflow++;
++	rc_rx_stats.rejected_chunks++;
++}
++
++void rc_rx_get_stats(rc_rx_stats_t *out)
++{
++	uint32_t primask;
++	if (out == NULL)
++	{
++		return;
++	}
++	primask = __get_PRIMASK();
++	__disable_irq();
++	*out = rc_rx_stats;
++	__set_PRIMASK(primask);
+ }
+diff --git a/User/APP/remote_control.h b/User/APP/remote_control.h
+index e7f6778..b753aa2 100644
+--- a/User/APP/remote_control.h
++++ b/User/APP/remote_control.h
+@@ -31,6 +31,14 @@
+ #define switch_is_down(s)       (s == RC_SW_DOWN)
+ #define switch_is_mid(s)        (s == RC_SW_MID)
+ #define switch_is_up(s)         (s == RC_SW_UP)
++
++/* ----------------------- RC RX validation -------------------------------- */
++/* 遥控器原始通道量程 364..1684，中值 1024；沿用既有 ±700 失效门限作为
++ * 接收校验边界：raw 324..1724 接受，之外判为坏帧。 */
++#define RC_CH_VALUE_MIN_RAW     ((uint16_t)324)
++#define RC_CH_VALUE_MAX_RAW     ((uint16_t)1724)
++#define RC_CH_VALUE_VALID(s)    (((s) >= RC_CH_VALUE_MIN_RAW) && ((s) <= RC_CH_VALUE_MAX_RAW))
++#define RC_SWITCH_VALID(s)      ((s) >= RC_SW_UP && (s) <= RC_SW_MID)
+ /* ----------------------- PC Key Definition-------------------------------- */
+ #define KEY_PRESSED_OFFSET_W            ((uint16_t)1 << 0)
+ #define KEY_PRESSED_OFFSET_S            ((uint16_t)1 << 1)
+@@ -69,9 +77,24 @@ typedef __packed  struct
+                 uint16_t v;
+         } key;
+ 	uint32_t last_fdb;
++	/* 发布序号：只有合法完整帧才递增，ISR 单写者，任务侧可做序号快照 */
++	volatile uint32_t generation;
+ 
+ } RC_ctrl_t;
+ 
++/* 遥控器接收统计：坏长度/坏通道/坏开关/丢弃块 */
++typedef struct
++{
++    uint32_t chunks;          /* 回调块数 */
++    uint32_t frames_ok;       /* 通过校验并发布的帧数 */
++    uint32_t bad_channel;     /* 通道越界帧 */
++    uint32_t bad_switch;      /* 开关枚举非法帧 */
++    uint32_t rejected_chunks; /* 长度非 18/36 的整块丢弃 */
++    uint32_t discarded_bytes; /* 被丢弃的字节数 */
++    uint32_t overflow;        /* DMA 事件长度异常 */
++    uint32_t restarts;        /* 成功重启接收次数 */
++} rc_rx_stats_t;
++
+ /* ----------------------- Internal Data ----------------------------------- */
+ 
+ extern fp32 GIMBAL_INS_yaw;
+@@ -83,5 +106,14 @@ extern void slove_RC_lost(void);
+ extern void slove_data_error(void);
+ extern void sbus_to_rc(uint8_t *sbus_buf, RC_ctrl_t *rc_ctrl, remoter_t *remoter);
+ 
++/* UART5 原始块 -> 校验 -> 发布（只在 ISR 调用） */
++extern void remote_control_rx_chunk(const uint8_t *data, uint16_t len);
++extern void remote_control_rx_restart(UART_HandleTypeDef *huart);
++extern void remote_control_rx_overflow(void);
++/* 读取接收统计（任务上下文，短临界区） */
++extern void rc_rx_get_stats(rc_rx_stats_t *out);
++/* 一致性读取遥控器快照（任务上下文） */
++extern uint8_t rc_ctrl_snapshot(RC_ctrl_t *out, uint32_t *generation);
++
+ 
+ #endif
+diff --git a/User/Bsp/bsp_usart.c b/User/Bsp/bsp_usart.c
+index a306d5c..d532668 100644
+--- a/User/Bsp/bsp_usart.c
++++ b/User/Bsp/bsp_usart.c
+@@ -2,138 +2,368 @@
+ #include "bsp_usart.h"
+ #include "gimbal_task.h"
+ #include "remote_control.h"
+-#include "string.h"
++#include <math.h>
++#include <string.h>
+ #include "usart.h"
+ #include "video_transmission_module.h"
+ 
+-//串口1，接收裁判系统数据
+-uint8_t usart1_buf[2][USART_RX_BUF_LENGHT];
++/*
++ * ============================================================================
++ * 串口接收/发送实现（P01/P03/P08）
++ * ----------------------------------------------------------------------------
++ * 1) USART1：底盘 -> 云台 28 字节帧，RX DMA 环形 + 流式解包，只有完整且
++ *    头尾/字段校验通过的帧才发布，ISR 内不打印、不阻塞。
++ * 2) UART5：遥控器 18 字节 DBUS 帧，normal DMA + ReceiveToIdle，整块校验后发布。
++ * 3) USART1 TX：46 字节帧 DMA 发送使用内部副本 + BUSY 丢弃计数，避免发送
++ *    过程中被下一帧覆盖。
++ * ============================================================================
++ */
++
++/* 串口1接收缓冲：DMA 写入的原始环形缓冲，不是业务帧缓冲 */
++static uint8_t chassis_rx_dma[USART1_RX_DMA_SIZE];
++/* 最近一次通过校验的原始帧，仅作证据使用，不参与业务解析 */
+ uint8_t gimbal_receive_data[CHASSIS_DATA_LENGTH];
+ 
+ uint8_t remote_buff[SBUS_RX_BUF_NUM];
+ remoter_t remoter;
+ 
+-
+-//串口7 
++/* 串口7 */
+ uint8_t usart7_buf[21];		//设置缓冲区
+ 
+-//串口10 云台板与图传通信, 用于绘制UI
++/* 串口1发送缓冲：DMA 异步读取，必须独立于调用者栈/静态帧缓冲 */
++static uint8_t usart1_tx_frame[USART1_TX_FRAME_MAX];
++static chassis_tx_stats_t usart1_tx_stats;
++
++/* 解析器状态 */
++typedef struct
++{
++	uint8_t  frame[CHASSIS_DATA_LENGTH];
++	uint8_t  length;
++	chassis_rx_stats_t stats;
++} chassis_rx_parser_t;
++
++static chassis_rx_parser_t chassis_rx;
++static uint32_t chassis_rx_last_pos;
++/* 发布序号：奇数=写入中，偶数=稳定；每帧 +2，帧计数 = 序号/2 */
++static volatile uint32_t chassis_rx_seq;
++
++/* 云台收到的底盘数据（只有完整有效帧才会改写） */
++chassis_data_t chassis_data;
+ 
+-//串口1发送函数
++/* 串口1发送函数（阻塞式，保留给调试/初始化路径） */
+ void USART1_Transmit_DMA(uint8_t *pData, uint16_t Size)
+ {
+-  HAL_UART_Transmit_DMA(&huart1, pData, Size);
++	if (pData == NULL || Size == 0U || Size > USART1_TX_FRAME_MAX)
++	{
++		usart1_tx_stats.rejected++;
++		return;
++	}
++	/* 发送进行中不允许覆盖 DMA 正在读取的缓冲，整帧丢弃并计数 */
++	if (huart1.gState != HAL_UART_STATE_READY)
++	{
++		usart1_tx_stats.busy_dropped++;
++		return;
++	}
++	memcpy(usart1_tx_frame, pData, Size);
++	if (HAL_UART_Transmit_DMA(&huart1, usart1_tx_frame, Size) == HAL_OK)
++	{
++		usart1_tx_stats.sent++;
++	}
++	else
++	{
++		usart1_tx_stats.busy_dropped++;
++	}
+ }
+ 
+-//串口1发送函数
++/* 串口1发送函数 */
+ void USART1_Transmit_IT(uint8_t *pData, uint16_t Size)
+ {
+   HAL_UART_Transmit_IT(&huart1, pData, Size);
+ }
+ 
+-//串口1发送函数
++/* 串口1发送函数 */
+ void USART1_Transmit(uint8_t *pData, uint16_t Size)
+ {
+   HAL_UART_Transmit(&huart1, pData, Size, 50);
+ }
+ 
+-//串口10发送函数
++/* 串口10发送函数 */
+ void USART10_Transmit(uint8_t *pData, uint16_t Size)
+ {
+ 	HAL_UART_Transmit(&huart10, pData, Size, 50);
+ }
+ 
+-//串口10中断发送函数
++/* 串口10中断发送函数 */
+ void USART10_Transmit_IT(uint8_t *pData, uint16_t Size)
+ {
+ 	HAL_UART_Transmit_IT(&huart10, pData, Size);
+ }
+ 
++void usart1_tx_get_stats(chassis_tx_stats_t *out)
++{
++	uint32_t primask;
++	if (out == NULL)
++	{
++		return;
++	}
++	primask = __get_PRIMASK();
++	__disable_irq();
++	*out = usart1_tx_stats;
++	__set_PRIMASK(primask);
++}
+ 
+-/***** 云台发来的数据全都到这里面去了 *****/
+-chassis_data_t chassis_data;
++/*
++ * ============================================================================
++ * 步骤1：28 字节帧字段解析与校验
++ * ============================================================================
++ * 数据源：chassis_rx.frame（已收满 28 字节）
++ * 操作：
++ * 1) 校验帧头 's' / 帧尾 'e'
++ * 2) 按现有小端布局取 6 个 float 与 chassis_mode/robot_id
++ * 3) 有限值 + 合理范围 + 枚举范围检查
++ * 返回：0=有效，1=帧头错，2=帧尾错，3=字段非法
++ */
++static uint8_t chassis_frame_parse(const uint8_t *frame, chassis_data_t *out)
++{
++	fp32_to_bytes field;
++
++	if (frame[0] != CHASSIS_FRAME_HEAD)
++	{
++		return 1U;
++	}
++	if (frame[CHASSIS_DATA_LENGTH - 1] != CHASSIS_FRAME_TAIL)
++	{
++		return 2U;
++	}
++
++	field.bytes[0] = frame[1];
++	field.bytes[1] = frame[2];
++	field.bytes[2] = frame[3];
++	field.bytes[3] = frame[4];
++	out->chassis_yaw = field.fp32;
++
++	field.bytes[0] = frame[5];
++	field.bytes[1] = frame[6];
++	field.bytes[2] = frame[7];
++	field.bytes[3] = frame[8];
++	out->chassis_pitch = field.fp32;
++
++	field.bytes[0] = frame[9];
++	field.bytes[1] = frame[10];
++	field.bytes[2] = frame[11];
++	field.bytes[3] = frame[12];
++	out->chassis_roll = field.fp32;
++
++	out->chassis_mode = frame[13];
++	out->robot_id = frame[14];
++
++	field.bytes[0] = frame[15];
++	field.bytes[1] = frame[16];
++	field.bytes[2] = frame[17];
++	field.bytes[3] = frame[18];
++	out->chassis_vx = field.fp32;
+ 
+-//云台处理底盘发来的数据
+-//目前发送给云台的数据：imu的yaw值和pitch值和roll值、底盘行为模式、机器人ID、底盘速度vx、vy、wz
+-void chassis_to_gimbal(uint8_t *data_chassis)
+-{
+-	static fp32_to_bytes yaw_now, pitch_now, roll_now;		//imu的yaw值和pitch值和roll值
+-	static uint8_t chassis_behaviour_now;									//底盘行为模式
+-	static uint8_t Robot_ID;															//机器人ID
+-	static fp32_to_bytes chassis_vx_now;									//底盘速度vx
+-	static fp32_to_bytes chassis_vy_now;									//底盘速度vy
+-	static fp32_to_bytes chassis_wz_now;									//底盘速度wz
+-
+-	// 解析IMU数据
+-	yaw_now.bytes[0] = data_chassis[1];
+-	yaw_now.bytes[1] = data_chassis[2];
+-	yaw_now.bytes[2] = data_chassis[3];
+-	yaw_now.bytes[3] = data_chassis[4];
+-	chassis_data.chassis_yaw = yaw_now.fp32;
+-
+-	pitch_now.bytes[0] = data_chassis[5];
+-	pitch_now.bytes[1] = data_chassis[6];
+-	pitch_now.bytes[2] = data_chassis[7];
+-	pitch_now.bytes[3] = data_chassis[8];
+-	chassis_data.chassis_pitch = pitch_now.fp32;
+-
+-	roll_now.bytes[0] = data_chassis[9];
+-	roll_now.bytes[1] = data_chassis[10];
+-	roll_now.bytes[2] = data_chassis[11];
+-	roll_now.bytes[3] = data_chassis[12];
+-	chassis_data.chassis_roll = roll_now.fp32;
+-
+-	// 解析底盘行为模式
+-	chassis_behaviour_now = data_chassis[13];
+-	chassis_data.chassis_mode = chassis_behaviour_now;
+-
+-	// 解析机器人ID
+-	Robot_ID = data_chassis[14];
+-	chassis_data.robot_id = Robot_ID;
+-
+-	// 解析底盘速度
+-	chassis_vx_now.bytes[0] = data_chassis[15];
+-	chassis_vx_now.bytes[1] = data_chassis[16];
+-	chassis_vx_now.bytes[2] = data_chassis[17];
+-	chassis_vx_now.bytes[3] = data_chassis[18];
+-	chassis_data.chassis_vx = chassis_vx_now.fp32;
+-
+-	chassis_vy_now.bytes[0] = data_chassis[19];
+-	chassis_vy_now.bytes[1] = data_chassis[20];
+-	chassis_vy_now.bytes[2] = data_chassis[21];
+-	chassis_vy_now.bytes[3] = data_chassis[22];
+-	chassis_data.chassis_vy = chassis_vy_now.fp32;
+-
+-	chassis_wz_now.bytes[0] = data_chassis[23];
+-	chassis_wz_now.bytes[1] = data_chassis[24];
+-	chassis_wz_now.bytes[2] = data_chassis[25];
+-	chassis_wz_now.bytes[3] = data_chassis[26];
+-	chassis_data.chassis_wz = chassis_wz_now.fp32;
+-	
+-}
+-
+-static void gimbal_memcpy_data_from_chassis(void)
+-{
+-	// 找到's'在源数组中的位置
+-	static int16_t start_index = -1;
+-	uint8_t temp[CHASSIS_DATA_LENGTH];
+-	
+-	for(uint8_t i = 0; i < CHASSIS_DATA_LENGTH; i++)
+-	{
+-		if(gimbal_receive_data[i] == 's')
++	field.bytes[0] = frame[19];
++	field.bytes[1] = frame[20];
++	field.bytes[2] = frame[21];
++	field.bytes[3] = frame[22];
++	out->chassis_vy = field.fp32;
++
++	field.bytes[0] = frame[23];
++	field.bytes[1] = frame[24];
++	field.bytes[2] = frame[25];
++	field.bytes[3] = frame[26];
++	out->chassis_wz = field.fp32;
++
++	/* NaN/Inf 一律拒绝，避免污染底盘姿态与速度状态 */
++	if (!isfinite(out->chassis_yaw) || !isfinite(out->chassis_pitch) ||
++	    !isfinite(out->chassis_roll) || !isfinite(out->chassis_vx) ||
++	    !isfinite(out->chassis_vy) || !isfinite(out->chassis_wz))
++	{
++		return 3U;
++	}
++	if (fabsf(out->chassis_yaw) > CHASSIS_ANGLE_LIMIT_RAD ||
++	    fabsf(out->chassis_pitch) > CHASSIS_ANGLE_LIMIT_RAD ||
++	    fabsf(out->chassis_roll) > CHASSIS_ANGLE_LIMIT_RAD)
++	{
++		return 3U;
++	}
++	if (fabsf(out->chassis_vx) > CHASSIS_SPEED_LIMIT_MPS ||
++	    fabsf(out->chassis_vy) > CHASSIS_SPEED_LIMIT_MPS ||
++	    fabsf(out->chassis_wz) > CHASSIS_WZ_LIMIT_RADPS)
++	{
++		return 3U;
++	}
++	if (out->chassis_mode > CHASSIS_MODE_MAX)
++	{
++		return 3U;
++	}
++	/* robot_id 是身份参考，0 表示裁判数据未就绪，不据此拒帧 */
++	return 0U;
++}
++
++/*
++ * ============================================================================
++ * 步骤2：有效帧原子发布
++ * ============================================================================
++ * 目标：ISR 单写者，任务读者用序号快照重试
++ * 操作：
++ * 1) 序号置奇数表示写入中
++ * 2) 更新原始帧证据与业务结构
++ * 3) 序号置偶数表示稳定，帧计数 = 序号/2
++ */
++static void chassis_rx_publish(const uint8_t *frame, const chassis_data_t *parsed)
++{
++	__DMB();
++	chassis_rx_seq++;
++	__DMB();
++	memcpy(gimbal_receive_data, frame, CHASSIS_DATA_LENGTH);
++	chassis_data = *parsed;
++	__DMB();
++	chassis_rx_seq++;
++	__DMB();
++}
++
++/*
++ * ============================================================================
++ * 步骤3：流式解包与逐字节重同步
++ * ============================================================================
++ * 操作：
++ * 1) 未锁定帧头时逐字节丢弃并计数，不跳过潜在帧头
++ * 2) 收满 28 字节后校验：通过则发布；失败则丢弃首字节并保留后缀重新扫描
++ * 3) 窗口长度天然有界（<=28），噪声不会无限累积
++ */
++static void chassis_rx_feed_byte(uint8_t value)
++{
++	chassis_rx.stats.bytes_seen++;
++
++	if (chassis_rx.length == 0U)
++	{
++		if (value != CHASSIS_FRAME_HEAD)
+ 		{
+-			start_index = i;
+-			break;
++			chassis_rx.stats.bytes_discarded++;
++			return;
+ 		}
++		chassis_rx.frame[0] = value;
++		chassis_rx.length = 1U;
++		return;
++	}
++
++	chassis_rx.frame[chassis_rx.length++] = value;
++	if (chassis_rx.length < CHASSIS_DATA_LENGTH)
++	{
++		return;
+ 	}
+-	
+-	// 如果找到's'，从该位置开始复制固定长度
+-	if (start_index != -1)
++
++	chassis_rx.length = 0U;
+ 	{
+-		memcpy(temp, &gimbal_receive_data[start_index], CHASSIS_DATA_LENGTH);
++		chassis_data_t parsed;
++		uint8_t verdict = chassis_frame_parse(chassis_rx.frame, &parsed);
++		if (verdict == 0U)
++		{
++			chassis_rx_publish(chassis_rx.frame, &parsed);
++			chassis_rx.stats.frames_ok++;
++			return;
++		}
++		if (verdict == 2U)
++		{
++			chassis_rx.stats.frames_bad_tail++;
++		}
++		else if (verdict == 3U)
++		{
++			chassis_rx.stats.frames_bad_field++;
++		}
++
++		/* 重同步：丢弃首字节，保留其余字节中可能存在的帧头 */
++		{
++			uint8_t index = 1U;
++			while (index < CHASSIS_DATA_LENGTH &&
++			       chassis_rx.frame[index] != CHASSIS_FRAME_HEAD)
++			{
++				index++;
++			}
++			if (index >= CHASSIS_DATA_LENGTH)
++			{
++				chassis_rx.stats.bytes_discarded += CHASSIS_DATA_LENGTH;
++			}
++			else
++			{
++				uint8_t remain = (uint8_t)(CHASSIS_DATA_LENGTH - index);
++				memmove(chassis_rx.frame, &chassis_rx.frame[index], remain);
++				chassis_rx.length = remain;
++				chassis_rx.stats.bytes_discarded += index;
++			}
++		}
+ 	}
+-	
+-	chassis_to_gimbal(temp);
++}
++
++static void chassis_rx_consume_range(uint32_t from, uint32_t to)
++{
++	uint32_t index;
++	for (index = from; index < to && index < USART1_RX_DMA_SIZE; index++)
++	{
++		chassis_rx_feed_byte(chassis_rx_dma[index]);
++	}
++	chassis_rx_last_pos = to;
++}
++
++/*
++ * ============================================================================
++ * 步骤4：DMA 事件消费
++ * ============================================================================
++ * 数据源：HAL_UARTEx_RxEventCallback 的 Size（当前 DMA 轮次已写入位置）
++ * 操作：
++ * 1) 位置单调递增时消费 [last_pos, pos)
++ * 2) 位置回绕（环形 DMA）时先消费到缓冲末尾，再消费 [0, pos)
++ * 3) pos==缓冲长度表示整轮写完，下一字节从 0 开始
++ * 4) 长度异常时丢弃解析器状态并重启接收，防止旧数据冒充新帧
++ */
++static void chassis_rx_restart(void)
++{
++	memset(chassis_rx_dma, 0, sizeof(chassis_rx_dma));
++	chassis_rx.length = 0U;
++	if (HAL_UARTEx_ReceiveToIdle_DMA(&huart1, chassis_rx_dma, USART1_RX_DMA_SIZE) == HAL_OK)
++	{
++		chassis_rx_last_pos = 0U;
++		chassis_rx.stats.restarts++;
++	}
++}
++
++static void chassis_rx_on_event(uint16_t size)
++{
++	uint32_t pos = size;
++
++	chassis_rx.stats.dma_events++;
++	if (pos > USART1_RX_DMA_SIZE)
++	{
++		chassis_rx.stats.overflow++;
++		chassis_rx_last_pos = 0U;
++		chassis_rx_restart();
++		return;
++	}
++	if (pos > chassis_rx_last_pos)
++	{
++		chassis_rx_consume_range(chassis_rx_last_pos, pos);
++	}
++	else if (pos < chassis_rx_last_pos)
++	{
++		chassis_rx_consume_range(chassis_rx_last_pos, USART1_RX_DMA_SIZE);
++		chassis_rx_consume_range(0U, pos);
++	}
++	chassis_rx_last_pos = (pos == USART1_RX_DMA_SIZE) ? 0U : pos;
++}
++
++/* UART5：normal DMA，每个事件是一段完整或部分帧，交给遥控器解析器校验 */
++static void remote_control_on_event(UART_HandleTypeDef *huart, uint16_t size)
++{
++	if (size > SBUS_RX_BUF_NUM)
++	{
++		remote_control_rx_overflow();
++		size = 0U;
++	}
++	remote_control_rx_chunk(remote_buff, size);
++	/* HT 事件时 RxState 仍为 BUSY，HAL 会返回 HAL_BUSY 而不影响正在进行的接收 */
++	(void)HAL_UARTEx_ReceiveToIdle_DMA(huart, remote_buff, SBUS_RX_BUF_NUM);
+ }
+ 
+ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+@@ -150,23 +380,13 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef * huart, uint16_t Size)
+ {
+ 	if(huart->Instance == USART1)
+ 	{
+-		gimbal_memcpy_data_from_chassis();
++		chassis_rx_on_event(Size);
+ 	}
+-	
++
+ 	if(huart->Instance == UART5)
+ 	{
+-		if (Size <= RC_FRAME_LENGTH)
+-		{
+-			sbus_to_rc(remote_buff, &rc_ctrl, &remoter);
+-		}
+-		else if(Size > RC_FRAME_LENGTH) // 错误处理
+-		{	
+-			memset(remote_buff, 0, SBUS_RX_BUF_NUM);				   
+-		}
+-
+-		HAL_UARTEx_ReceiveToIdle_DMA(&huart5, remote_buff, SBUS_RX_BUF_NUM);
++		remote_control_on_event(huart, Size);
+ 	}
+-	
+ }
+ 
+ //串口出错回调函数
+@@ -174,18 +394,97 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef * huart)
+ {
+ 	if(huart->Instance == USART1)
+ 	{
+-		HAL_UARTEx_ReceiveToIdle_DMA(&huart1, usart1_buf[0], USART_RX_BUF_LENGHT); // 接收发生错误后重启
+-		memset(usart1_buf, 0,  USART_RX_BUF_LENGHT * 2);		
++		/* 同一缓冲重启；解析器与消费位置一起重置，防止重复消费 */
++		chassis_rx.length = 0U;
++		chassis_rx_restart();
+ 	}
+-	
++
+ 	if(huart->Instance == UART5)
+ 	{
+-		HAL_UARTEx_ReceiveToIdle_DMA(&huart5, remote_buff, SBUS_RX_BUF_NUM); // 接收发生错误后重启
+-		memset(remote_buff, 0, SBUS_RX_BUF_NUM);							   // 清除接收缓存		
++		remote_control_rx_restart(huart);
+ 	}
+-	
++
+ 	if(huart->Instance == USART10)
+ 	{
+ 		tfmini_uart_error_callback(huart);
+ 	}
+ }
++
++/*
++ * ============================================================================
++ * 步骤5：接收启动与统计接口
++ * ============================================================================
++ */
++void bsp_usart_rx_start(void)
++{
++	memset(&chassis_rx, 0, sizeof(chassis_rx));
++	memset(chassis_rx_dma, 0, sizeof(chassis_rx_dma));
++	chassis_rx_last_pos = 0U;
++	(void)HAL_UARTEx_ReceiveToIdle_DMA(&huart1, chassis_rx_dma, USART1_RX_DMA_SIZE);
++	remote_control_rx_restart(&huart5);
++}
++
++void chassis_rx_feed_stream(const uint8_t *data, uint16_t len)
++{
++	uint16_t index;
++	if (data == NULL)
++	{
++		return;
++	}
++	for (index = 0U; index < len; index++)
++	{
++		chassis_rx_feed_byte(data[index]);
++	}
++}
++
++/* 诊断/离线测试用：丢弃解析器半帧状态与 DMA 消费位置，不触碰外设 */
++void chassis_rx_reset(void)
++{
++	chassis_rx.length = 0U;
++	chassis_rx_last_pos = 0U;
++}
++
++void chassis_rx_get_stats(chassis_rx_stats_t *out)
++{
++	uint32_t primask;
++	if (out == NULL)
++	{
++		return;
++	}
++	primask = __get_PRIMASK();
++	__disable_irq();
++	*out = chassis_rx.stats;
++	__set_PRIMASK(primask);
++}
++
++uint8_t chassis_data_read(chassis_data_t *out, uint32_t *generation)
++{
++	uint32_t before;
++	uint32_t after;
++	uint32_t attempt;
++	if (out == NULL)
++	{
++		return 0U;
++	}
++	for (attempt = 0U; attempt < 8U; attempt++)
++	{
++		before = chassis_rx_seq;
++		if ((before & 1U) != 0U)
++		{
++			continue;
++		}
++		__DMB();
++		*out = chassis_data;
++		__DMB();
++		after = chassis_rx_seq;
++		if (before == after)
++		{
++			if (generation != NULL)
++			{
++				*generation = before >> 1;
++			}
++			return 1U;
++		}
++	}
++	return 0U;
++}
+diff --git a/User/Bsp/bsp_usart.h b/User/Bsp/bsp_usart.h
+index 7692f4d..882dea3 100644
+--- a/User/Bsp/bsp_usart.h
++++ b/User/Bsp/bsp_usart.h
+@@ -18,6 +18,20 @@
+ #define CHASSIS_DATA_LENGTH 28
+ #define USART_RX_BUF_LENGHT 512
+ 
++/* -------------------------------------------------------------------------
++ * 板间 28 字节帧接收参数（P01）
++ * 帧格式不变：0='s'，1..26 为 6 个 float + 2 个 uint8，27='e'。
++ * 抖动只影响接收实现，不改线上字节序与字段位置。
++ * ---------------------------------------------------------------------- */
++#define CHASSIS_FRAME_HEAD      's'
++#define CHASSIS_FRAME_TAIL      'e'
++#define USART1_RX_DMA_SIZE      64u     /* DMA 环形缓冲，>28 以容纳粘包/余量 */
++#define USART1_TX_FRAME_MAX     64u     /* 46 字节发送帧的内部副本上限 */
++#define CHASSIS_ANGLE_LIMIT_RAD 3.2f    /* 底盘姿态角合理上限，rad */
++#define CHASSIS_SPEED_LIMIT_MPS 10.0f   /* vx/vy 合理上限，m/s */
++#define CHASSIS_WZ_LIMIT_RADPS  50.0f   /* wz 合理上限，rad/s */
++#define CHASSIS_MODE_MAX        2u      /* NO_MOVE/FOLLOW/SPIN */
++
+ // 定义一个联合类型，用于将浮点数转换为字节
+ typedef union {
+     float fp32;
+@@ -83,11 +97,45 @@ typedef struct chassis_data
+ 
+ extern chassis_data_t chassis_data;
+ 
++/* 板间接收统计：发布计数与各类丢弃原因（P01 验收项） */
++typedef struct
++{
++    uint32_t bytes_seen;        /* 进入解析器的字节数 */
++    uint32_t frames_ok;         /* 完整且通过校验的帧数 */
++    uint32_t frames_bad_tail;   /* 尾字节不是 'e' */
++    uint32_t frames_bad_field;  /* 头尾正确但字段越界/非有限值 */
++    uint32_t bytes_discarded;   /* 无头/重同步丢弃的字节数 */
++    uint32_t overflow;          /* DMA 事件长度异常 */
++    uint32_t restarts;          /* 成功重启接收的次数 */
++    uint32_t dma_events;        /* IDLE/HT/TC 事件总数 */
++} chassis_rx_stats_t;
++
++/* 46 字节帧 DMA 发送统计：BUSY 丢弃不再表现为静默覆盖 */
++typedef struct
++{
++    uint32_t sent;          /* 成功启动 DMA 的帧数 */
++    uint32_t busy_dropped;  /* 上一帧仍在发送，整帧丢弃 */
++    uint32_t rejected;      /* 长度/指针非法 */
++} chassis_tx_stats_t;
++
+ extern fp32 chassis_INS_yaw, chassis_INS_pitch, chassis_spin_speed;
+ extern uint8_t remote_buff[SBUS_RX_BUF_NUM];
+-extern uint8_t usart1_buf[2][USART_RX_BUF_LENGHT];
++extern uint8_t gimbal_receive_data[CHASSIS_DATA_LENGTH];
+ extern uint8_t usart7_buf[21];											//设置缓冲区
+ 
++/* 启动 USART1/UART5 接收；取代 main.c 内的直接 DMA 调用（单一所有者） */
++void bsp_usart_rx_start(void);
++/* 离线测试/诊断注入：按 UART1 接收顺序喂字节，走同一解析器；正式接收仍走 DMA 回调 */
++void chassis_rx_feed_stream(const uint8_t *data, uint16_t len);
++/* 诊断/离线测试：清解析器半帧状态与消费位置，不触碰外设 */
++void chassis_rx_reset(void);
++/* 读取板间接收统计（任务上下文，短临界区） */
++void chassis_rx_get_stats(chassis_rx_stats_t *out);
++/* 读取 46 字节帧发送统计 */
++void usart1_tx_get_stats(chassis_tx_stats_t *out);
++/* 一致性读取：ISR 发布，任务侧用序号快照重试 */
++uint8_t chassis_data_read(chassis_data_t *out, uint32_t *generation);
++
+ 
+ //遥控器
+ typedef struct
+diff --git a/User/Bsp/bsp_vofa+.c b/User/Bsp/bsp_vofa+.c
+index 7fd56d3..65eefe6 100644
+--- a/User/Bsp/bsp_vofa+.c
++++ b/User/Bsp/bsp_vofa+.c
+@@ -1,24 +1,60 @@
+ #include "bsp_vofa+.h"
+ #include "bsp_usart.h"
+ 
+-// 按printf格式写，最后必须加\r\n
+-void Vofa_FireWater(const char *format, ...)
+-{
+-    uint8_t txBuffer[100];
+-    uint32_t n;
+-    va_list args;
+-    va_start(args, format);
+-    n = vsnprintf((char *)txBuffer, 100, format, args);
+-    HAL_UART_Transmit_IT(&huart1, (uint8_t *)txBuffer, n);
+-    va_end(args);
+-}
++/* VOFA 调试输出统计：USB/协议字节流不受影响 */
++static volatile uint32_t vofa_dropped;
++static volatile uint32_t vofa_sent;
+ 
++/*
++ * ============================================================================
++ * VOFA JustFloat 发送（USART10，调试专用）
++ * ============================================================================
++ * 操作：
++ * 1) 上一帧仍在发送时整帧丢弃并计数，避免覆盖 HAL 正在读取的静态缓冲
++ * 2) 长度超限时丢弃，不越界写 buf
++ */
+ void Vofa_JustFloat(float *_data, uint8_t _num)
+ {
+     static uint8_t buf[256];
+     static const uint8_t tail[4] = {0x00, 0x00, 0x80, 0x7F};
++    uint8_t length;
+ 
+-    memcpy(buf, _data, 4 * _num);              // 1. 数据
+-    memcpy(buf + 4 * _num, tail, 4);           // 2. 尾
+-    HAL_UART_Transmit_IT(&huart10, buf, 4 * _num + 4); // 3. 一帧发出
++    if (_data == NULL || _num == 0U)
++    {
++        vofa_dropped++;
++        return;
++    }
++    length = (uint8_t)(4U * _num + 4U);
++    if (length > sizeof(buf))
++    {
++        vofa_dropped++;
++        return;
++    }
++    if (huart10.gState != HAL_UART_STATE_READY)
++    {
++        vofa_dropped++;
++        return;
++    }
++    memcpy(buf, _data, 4U * _num);              // 1. 数据
++    memcpy(buf + 4U * _num, tail, 4);           // 2. 尾
++    if (HAL_UART_Transmit_IT(&huart10, buf, length) == HAL_OK)
++    {
++        vofa_sent++;
++    }
++    else
++    {
++        vofa_dropped++;
++    }
++}
++
++void vofa_get_stats(uint32_t *sent, uint32_t *dropped)
++{
++    if (sent != NULL)
++    {
++        *sent = vofa_sent;
++    }
++    if (dropped != NULL)
++    {
++        *dropped = vofa_dropped;
++    }
+ }
+diff --git a/User/Bsp/bsp_vofa+.h b/User/Bsp/bsp_vofa+.h
+index 707b971..af0c50d 100644
+--- a/User/Bsp/bsp_vofa+.h
++++ b/User/Bsp/bsp_vofa+.h
+@@ -5,11 +5,12 @@
+ #include <stdio.h>
+ #include "stdint.h"
+ #include <string.h>
+-#include <stdarg.h>
+ /* 只写数组名，自动推元素个数 */
+ #define Vofa_JustFloat_AUTO(arr) Vofa_JustFloat((arr), (uint8_t)(sizeof(arr) / sizeof((arr)[0])))
+-			
+-void Vofa_FireWater(const char *format, ...);
++
++/* 调试输出只走 USART10；不允许占用 USART1 板间协议链路 */
+ void Vofa_JustFloat(float *_data, uint8_t _num);
++/* 发送/丢弃计数，便于判断调试输出是否被 BUSY 吞掉 */
++void vofa_get_stats(uint32_t *sent, uint32_t *dropped);
+ 
+ #endif
+diff --git a/User/Communication/example/device/comm_app.c b/User/Communication/example/device/comm_app.c
+index 67566c9..e2ed7d9 100644
+--- a/User/Communication/example/device/comm_app.c
++++ b/User/Communication/example/device/comm_app.c
+@@ -13,6 +13,7 @@
+ #include "usb_device.h"
+ #include "usbd_cdc_if.h"
+ #include "usbd_core.h"
++#include "usb_cdc_port.h"
+ 
+ #include "usart.h"
+ #include "bsp_usart.h"
+@@ -285,7 +286,8 @@ void comm_camera_trigger_poll(void) {
+ void comm_app_task(void const *arg) {
+     (void)arg;
+     extern USBD_HandleTypeDef hUsbDeviceHS;
+-		MX_USB_DEVICE_Init();
++    /* USB 由 defaultTask 唯一初始化（P08）；本任务只等待枚举，超时后继续运行，
++       不重复初始化、不在未枚举时解引用 CDC 类数据。 */
+ #if defined(TFMINI_ENABLE) && (TFMINI_ENABLE == 1)
+     /* Init TFmini RX early; do not wait for USB enumeration. */
+     tfmini_uart_init(&huart10);
+@@ -303,6 +305,8 @@ void comm_app_task(void const *arg) {
+ 
+     for(;;) {
+ #if COMM_PROTO_ENABLE
++        /* P08：USB ISR 只入有界环，协议解析在这里做，避免 ISR/任务并发 */
++        usb_cdc_port_rx_pump();
+         uproto_tick(&proto_ctx);
+         camera_channel_tick(&g_camera);
+         ch_uproto_arbiter_tick(&g_bind);
+diff --git a/User/Communication/example/device/usb_cdc_port.c b/User/Communication/example/device/usb_cdc_port.c
+index 2db963a..c7c090f 100644
+--- a/User/Communication/example/device/usb_cdc_port.c
++++ b/User/Communication/example/device/usb_cdc_port.c
+@@ -1,41 +1,160 @@
++/*
++ * ============================================================================
++ * USB CDC 端口适配层（P08）
++ * ----------------------------------------------------------------------------
++ * 1) RX：CDC 中断只把原始字节写入无锁有界环（ISR 单生产者），协议解析全部
++ *    放到 comm_app 任务（usb_cdc_port_rx_pump）执行，避免 ISR/任务的收发
++ *    状态并发。
++ * 2) TX：uproto 编码结果先复制到本层静态缓冲再启动 USB 发送；上一帧未发完
++ *    时返回 0（调用者按 TX_FULL 处理），不覆盖正在被 USB 外设读取的缓冲。
++ * 3) 所有丢弃/失败都有计数，不静默宣称成功。
++ * ============================================================================
++ */
+ #include "usb_cdc_port.h"
+ #include "stm32h7xx_hal.h"
+ #include "usbd_core.h"
+ #include "usbd_cdc_if.h"
++#include <string.h>
+ 
+ extern USBD_HandleTypeDef hUsbDeviceHS;
+ 
++/* 接收交接环：head 只由 ISR 写，tail 只由任务写，均 16 位对齐访问 */
++static volatile uint16_t usb_rx_head;
++static volatile uint16_t usb_rx_tail;
++static uint8_t usb_rx_ring[USB_CDC_RX_RING_SIZE];
++
++/* 发送暂存：USB 外设异步读取，长度不超过单包 MTU */
++static uint8_t usb_tx_stage[USB_CDC_TX_STAGE_SIZE];
++static usb_cdc_port_stats_t usb_stats;
++
++/* 绑定后的协议上下文：只在 comm_app 任务读取 */
++static uproto_context_t *s_ctx = NULL;
++
+ void usb_cdc_port_init(void)
+ {
+-    /* Nothing required here; USB is initialized by MX_USB_DEVICE_Init(). */
++    usb_rx_head = 0u;
++    usb_rx_tail = 0u;
+ }
+ 
+-uint32_t usb_cdc_port_write(void *user, const uint8_t *data, uint32_t len)
++/*
++ * ============================================================================
++ * 步骤1：ISR 侧入环
++ * ============================================================================
++ * 数据源：CDC_Receive_HS 的 USB OUT 包
++ * 操作：
++ * 1) 逐字节写入环形缓冲，head 只在最后更新
++ * 2) 环满时丢弃新字节并计数；不阻塞、不解析
++ */
++void usb_cdc_port_on_rx(const uint8_t *data, uint32_t len)
+ {
+-    (void)user;
+-    if (!data || len == 0) return 0u;
+-    if (hUsbDeviceHS.dev_state != USBD_STATE_CONFIGURED) return 0u;
++    uint16_t head;
++    uint16_t next;
++    uint32_t index;
+ 
+-    /* CDC HS bulk IN max packet typically 512. We submit up to 512 bytes at once. */
+-    uint16_t to_send = (len > 512u) ? 512u : (uint16_t)len;
++    if (data == NULL || len == 0u)
++    {
++        return;
++    }
++    usb_stats.isr_bytes += len;
++    head = usb_rx_head;
++    for (index = 0u; index < len; index++)
++    {
++        next = (uint16_t)((head + 1u) % USB_CDC_RX_RING_SIZE);
++        if (next == usb_rx_tail)
++        {
++            usb_stats.isr_dropped += (len - index);
++            break;
++        }
++        usb_rx_ring[head] = data[index];
++        head = next;
++    }
++    usb_rx_head = head;
++}
++
++/*
++ * ============================================================================
++ * 步骤2：任务侧出环并解析
++ * ============================================================================
++ * 操作：
++ * 1) 按块取出环内字节，一次性交给 uproto_on_rx_bytes
++ * 2) tail 只在交给协议后更新；单圈最多处理环容量
++ */
++void usb_cdc_port_rx_pump(void)
++{
++    uint16_t tail;
++    uint16_t head;
++    uint8_t chunk[64];
++    uint32_t count;
++
++    if (s_ctx == NULL)
++    {
++        return;
++    }
++    for (;;)
++    {
++        tail = usb_rx_tail;
++        head = usb_rx_head;
++        if (tail == head)
++        {
++            return;
++        }
++        count = 0u;
++        while (tail != head && count < sizeof(chunk))
++        {
++            chunk[count++] = usb_rx_ring[tail];
++            tail = (uint16_t)((tail + 1u) % USB_CDC_RX_RING_SIZE);
++        }
++        uproto_on_rx_bytes(s_ctx, chunk, count);
++        usb_stats.pumped_bytes += count;
++        usb_rx_tail = tail;
++    }
++}
+ 
+-    /* If busy, report 0 (non-blocking). Caller may retry later. */
+-    uint8_t res = CDC_Transmit_HS((uint8_t*)data, to_send);
+-    if (res == USBD_OK) {
+-        return (uint32_t)to_send;
++/*
++ * ============================================================================
++ * 步骤3：发送（有界、非阻塞）
++ * ============================================================================
++ * 操作：
++ * 1) 未枚举/参数非法直接返回 0 并计数
++ * 2) 复制到本层暂存后再启动 CDC 发送，调用者栈缓冲即可安全返回
++ * 3) 上一帧未发完（TxState != 0）时不覆盖，返回 0 并计数
++ */
++uint32_t usb_cdc_port_write(void *user, const uint8_t *data, uint32_t len)
++{
++    (void)user;
++    if (!data || len == 0u)
++    {
++        usb_stats.tx_rejected++;
++        return 0u;
++    }
++    if (hUsbDeviceHS.dev_state != USBD_STATE_CONFIGURED || hUsbDeviceHS.pClassData == NULL)
++    {
++        usb_stats.tx_rejected++;
++        return 0u;
++    }
++    if (len > USB_CDC_TX_STAGE_SIZE)
++    {
++        len = USB_CDC_TX_STAGE_SIZE;
+     }
+-    return 0u;
++    memcpy(usb_tx_stage, data, len);
++    if (CDC_Transmit_HS(usb_tx_stage, (uint16_t)len) != USBD_OK)
++    {
++        usb_stats.tx_busy_dropped++;
++        return 0u;
++    }
++    usb_stats.tx_frames++;
++    return len;
+ }
+ 
+ static void usb_cdc_port_flush(void *user)
+ {
+-    (void)user; /* No-op */
++    (void)user; /* USB CDC 无显式 flush */
+ }
+ 
+ static uint16_t usb_cdc_port_get_mtu(void *user)
+ {
+     (void)user;
+-    return 512u; /* HS bulk IN packet size */
++    return (uint16_t)USB_CDC_TX_STAGE_SIZE;
+ }
+ 
+ void usb_cdc_port_get_ops(uproto_port_ops_t *ops)
+@@ -47,16 +166,20 @@ void usb_cdc_port_get_ops(uproto_port_ops_t *ops)
+     ops->user = NULL;
+ }
+ 
+-
+-static uproto_context_t *s_ctx = NULL;
+-
+ void usb_cdc_port_bind_uproto(uproto_context_t *ctx)
+ {
+     s_ctx = ctx;
+ }
+ 
+-void usb_cdc_port_on_rx(const uint8_t *data, uint32_t len)
++void usb_cdc_port_get_stats(usb_cdc_port_stats_t *out)
+ {
+-    if (!s_ctx || !data || len == 0) return;
+-    uproto_on_rx_bytes(s_ctx, data, len);
+-}
+\ No newline at end of file
++    uint32_t primask;
++    if (out == NULL)
++    {
++        return;
++    }
++    primask = __get_PRIMASK();
++    __disable_irq();
++    *out = usb_stats;
++    __set_PRIMASK(primask);
++}
+diff --git a/User/Communication/example/device/usb_cdc_port.h b/User/Communication/example/device/usb_cdc_port.h
+index 1516da2..4afd92c 100644
+--- a/User/Communication/example/device/usb_cdc_port.h
++++ b/User/Communication/example/device/usb_cdc_port.h
+@@ -8,7 +8,27 @@
+ extern "C" {
+ #endif
+ 
+-/* Initialize any internal state if needed (currently none) */
++/* RX 交接环容量：2 的幂，ISR 单生产者 / 任务单消费者，无锁 */
++#ifndef USB_CDC_RX_RING_SIZE
++#define USB_CDC_RX_RING_SIZE 1024u
++#endif
++
++/* 单次 USB 发送暂存上限：HS bulk IN 单包 512 */
++#ifndef USB_CDC_TX_STAGE_SIZE
++#define USB_CDC_TX_STAGE_SIZE 512u
++#endif
++
++typedef struct
++{
++    uint32_t isr_bytes;      /* CDC 回调收到的字节数 */
++    uint32_t isr_dropped;    /* 交接环满时丢弃的字节数 */
++    uint32_t pumped_bytes;   /* 任务侧交给 uproto 的字节数 */
++    uint32_t tx_frames;      /* 成功启动 USB 发送的帧数 */
++    uint32_t tx_busy_dropped;/* 上一帧未发完而丢弃的帧数 */
++    uint32_t tx_rejected;    /* 未枚举/参数非法 */
++} usb_cdc_port_stats_t;
++
++/* Initialize any internal state if needed */
+ void usb_cdc_port_init(void);
+ 
+ /* Build default uproto port ops backed by USB CDC (HS) */
+@@ -17,13 +37,18 @@ void usb_cdc_port_get_ops(uproto_port_ops_t *ops);
+ /* Direct write helper (non-blocking). Returns bytes accepted. */
+ uint32_t usb_cdc_port_write(void *user, const uint8_t *data, uint32_t len);
+ 
+-
+-/* Bind uproto ctx so CDC RX callback can feed bytes in */
++/* Bind uproto ctx so USB CDC RX bytes can be handed to the protocol */
+ void usb_cdc_port_bind_uproto(uproto_context_t *ctx);
+ 
+-/* Feed RX bytes from CDC_Receive_xx callback */
++/* ISR 侧：只把原始字节放入有界交接环，不做协议解析 */
+ void usb_cdc_port_on_rx(const uint8_t *data, uint32_t len);
+ 
++/* 任务侧：把交接环中的字节交给 uproto 解析（只在 comm_app 任务调用） */
++void usb_cdc_port_rx_pump(void);
++
++/* 读取统计（任务上下文，短临界区） */
++void usb_cdc_port_get_stats(usb_cdc_port_stats_t *out);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/AI_Workspace/tools/validate_rx_chain.py b/AI_Workspace/tools/validate_rx_chain.py
+new file mode 100644
+index 0000000..0972b3e
+--- /dev/null
++++ b/AI_Workspace/tools/validate_rx_chain.py
+@@ -0,0 +1,752 @@
++"""B02 receive-chain checks: real ARMCC-compiled parsing callbacks under Unicorn.
++
++Three harnesses, each built from source function bodies extracted through the
++project's ARMCC preprocessing (same route as validate_runtime.py):
++
++  B02-01 chassis_rx : USART1 28-byte frame stream parser (P01)
++  B02-02 rc_rx      : UART5 18-byte DBUS frame validation/publish (P03)
++  B02-03 usb_handoff: CDC RX bounded hand-off ring and TX buffer lifetime (P08)
++
++These are function/callback integration tests with HAL/USB stand-ins; they do
++not prove peripheral or hardware behaviour.
++"""
++import argparse
++import json
++import re
++import subprocess
++import sys
++from pathlib import Path
++
++from audit import read_source
++from project_paths import ARM_BIN, ARTIFACTS, CACHE, DEPENDENCIES, ROOT, project_path
++from validate_invariants import functions
++
++sys.path.insert(0, str(DEPENDENCIES))
++from elftools.elf.elffile import ELFFile
++from unicorn import Uc, UC_ARCH_ARM, UC_HOOK_CODE, UC_MODE_MCLASS, UC_MODE_THUMB
++from unicorn.arm_const import UC_ARM_REG_SP
++
++DEFAULT_CACHE = CACHE / "validation/b02-rx-chain"
++DEFAULT_RESULTS = ARTIFACTS / "optimization-2026-11-14/20261114-174009/B02/tests/rx-chain"
++
++
++def define(text, name):
++    match = re.search(r"^\s*#define\s+" + re.escape(name) + r"\s+(.+?)\s*(?:/\*.*)?$",
++                      text, re.MULTILINE)
++    if not match:
++        raise RuntimeError("missing define: " + name)
++    return match.group(1).strip()
++
++
++def build(name, source, cache, results):
++    cache.mkdir(parents=True, exist_ok=True)
++    results.mkdir(parents=True, exist_ok=True)
++    code = cache / (name + ".c")
++    obj = cache / (name + ".o")
++    image = cache / (name + ".axf")
++    code.write_text(source, encoding="utf-8")
++    for command in (
++        [str(ARM_BIN / "armcc.exe"), "--cpu", "Cortex-M7", "--thumb", "--c99",
++         "-O0", "-c", str(code), "-o", str(obj)],
++        [str(ARM_BIN / "armlink.exe"), "--ro_base", "0x10000", "--rw_base", "0x20000000",
++         "--entry", "test_entry", str(obj), "-o", str(image)],
++    ):
++        done = subprocess.run(command, capture_output=True, timeout=60)
++        if done.returncode:
++            raise RuntimeError(name + "\n" + done.stdout.decode("gb18030", errors="replace")
++                               + done.stderr.decode("gb18030", errors="replace"))
++    uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
++    uc.mem_map(0, 0x100000)
++    uc.mem_map(0x20000000, 0x100000)
++    with image.open("rb") as stream:
++        elf = ELFFile(stream)
++        for segment in elf.iter_segments():
++            if segment["p_type"] == "PT_LOAD":
++                uc.mem_write(segment["p_vaddr"], segment.data())
++        for section in elf.iter_sections():
++            if section["sh_flags"] & 2 and section["sh_type"] == "SHT_PROGBITS":
++                uc.mem_write(section["sh_addr"], section.data())
++        symbols = {s.name: s["st_value"] for s in elf.get_section_by_name(".symtab").iter_symbols()}
++        entry = elf["e_entry"]
++    uc.reg_write(UC_ARM_REG_SP, 0x200FF000)
++
++    def stop_on_breakpoint(machine, address, size, _):
++        if machine.mem_read(address, 2) == b"\x00\xbe":
++            machine.emu_stop()
++
++    uc.hook_add(UC_HOOK_CODE, stop_on_breakpoint)
++    uc.emu_start(entry | 1, 0, timeout=20000000, count=4000000)
++    raw = bytes(uc.mem_read(symbols["test_result"], 12))
++    status, checks, failure = (int.from_bytes(raw[i:i + 4], "little") for i in range(0, 12, 4))
++    outcome = {"name": name, "status": hex(status), "checks": checks, "failure": failure,
++               "passed": status == 0x600D and failure == 0}
++    (results / (name + "-results.json")).write_text(json.dumps(outcome, indent=2), encoding="utf-8")
++    return outcome
++
++
++# ---------------------------------------------------------------------------
++# B02-01 chassis 28-byte stream parser (P01)
++# ---------------------------------------------------------------------------
++def chassis_source():
++    header = read_source(ROOT / "User/Bsp/bsp_usart.h")
++    names = ["CHASSIS_DATA_LENGTH", "USART1_RX_DMA_SIZE", "CHASSIS_FRAME_HEAD",
++             "CHASSIS_FRAME_TAIL", "CHASSIS_ANGLE_LIMIT_RAD", "CHASSIS_SPEED_LIMIT_MPS",
++             "CHASSIS_WZ_LIMIT_RADPS", "CHASSIS_MODE_MAX", "SBUS_RX_BUF_NUM"]
++    values = {name: define(header, name) for name in names}
++    code = functions(read_source(ROOT / "User/Bsp/bsp_usart.c"))
++    order = ["chassis_frame_parse", "chassis_rx_publish", "chassis_rx_feed_byte",
++             "chassis_rx_consume_range", "chassis_rx_restart", "chassis_rx_on_event",
++             "chassis_data_read", "chassis_rx_feed_stream", "chassis_rx_reset", "HAL_UART_ErrorCallback"]
++    signatures = {
++        "chassis_frame_parse": "static uint8_t chassis_frame_parse(const uint8_t *frame, chassis_data_t *out)",
++        "chassis_rx_publish": "static void chassis_rx_publish(const uint8_t *frame, const chassis_data_t *parsed)",
++        "chassis_rx_feed_byte": "static void chassis_rx_feed_byte(uint8_t value)",
++        "chassis_rx_consume_range": "static void chassis_rx_consume_range(uint32_t from, uint32_t to)",
++        "chassis_rx_restart": "static void chassis_rx_restart(void)",
++        "chassis_rx_on_event": "static void chassis_rx_on_event(uint16_t size)",
++        "chassis_data_read": "uint8_t chassis_data_read(chassis_data_t *out, uint32_t *generation)",
++        "chassis_rx_feed_stream": "void chassis_rx_feed_stream(const uint8_t *data, uint16_t len)",
++        "chassis_rx_reset": "void chassis_rx_reset(void)",
++        "HAL_UART_ErrorCallback": "void HAL_UART_ErrorCallback(UART_HandleTypeDef * huart)",
++    }
++    joins = [signatures[name] + " " + code[name] + "\n" for name in order]
++    return r'''
++#include <stdint.h>
++#include <stddef.h>
++#include <string.h>
++#include <math.h>
++typedef float fp32;
++typedef union { float fp32; uint8_t bytes[4]; } fp32_to_bytes;
++typedef struct
++{
++    fp32 chassis_vx, chassis_vy, chassis_wz;
++    fp32 chassis_yaw, chassis_pitch, chassis_roll, cap_voltage;
++    uint8_t chassis_mode, robot_id;
++} chassis_data_t;
++typedef struct
++{
++    uint32_t bytes_seen, frames_ok, frames_bad_tail, frames_bad_field;
++    uint32_t bytes_discarded, overflow, restarts, dma_events;
++} chassis_rx_stats_t;
++typedef struct { void *Instance; uint32_t gState; } UART_HandleTypeDef;
++#define HAL_OK 0
++#define USART1 ((void *)0x40011000)
++#define UART5  ((void *)0x40005000)
++#define USART10 ((void *)0x4000F000)
++#define __DMB() ((void)0)
++''' + "\n".join("#define %s %s" % (k, v) for k, v in values.items()) + r'''
++uint8_t *last_dma_buf;
++uint16_t last_dma_size;
++uint32_t dma_start_count;
++uint32_t HAL_UARTEx_ReceiveToIdle_DMA(UART_HandleTypeDef *h, uint8_t *b, uint16_t l) {
++  (void)h;
++  last_dma_buf = b;
++  last_dma_size = l;
++  dma_start_count++;
++  return HAL_OK;
++}
++uint32_t HAL_GetTick(void) { return 0u; }
++void remote_control_rx_chunk(const uint8_t *d, uint16_t l) { (void)d; (void)l; }
++void remote_control_rx_restart(UART_HandleTypeDef *h) { (void)h; }
++void remote_control_rx_overflow(void) { }
++void tfmini_uart_error_callback(UART_HandleTypeDef *h) { (void)h; }
++UART_HandleTypeDef huart1;
++uint8_t remote_buff[SBUS_RX_BUF_NUM];
++struct { uint8_t before[8]; uint8_t value[USART1_RX_DMA_SIZE]; uint8_t after[8]; } chassis_guard;
++struct { uint8_t before[8]; uint8_t value[CHASSIS_DATA_LENGTH]; uint8_t after[8]; } raw_guard;
++struct { uint8_t before[8]; chassis_data_t value; uint8_t after[8]; } data_guard;
++#define chassis_rx_dma chassis_guard.value
++#define gimbal_receive_data raw_guard.value
++#define chassis_data data_guard.value
++typedef struct { uint8_t frame[CHASSIS_DATA_LENGTH]; uint8_t length; chassis_rx_stats_t stats; } chassis_rx_parser_t;
++static chassis_rx_parser_t chassis_rx;
++static uint32_t chassis_rx_last_pos;
++static volatile uint32_t chassis_rx_seq;
++volatile struct { uint32_t status, checks, failure; } test_result;
++''' + "".join(joins) + r'''
++void check(int condition, uint32_t number) {
++  ++test_result.checks;
++  if (!condition && test_result.failure == 0u) test_result.failure = number;
++}
++static void make_frame(uint8_t *f, float yaw, float pitch, float roll, uint8_t mode,
++                       uint8_t id, float vx, float vy, float wz) {
++  f[0] = CHASSIS_FRAME_HEAD;
++  memcpy(f + 1, &yaw, 4);
++  memcpy(f + 5, &pitch, 4);
++  memcpy(f + 9, &roll, 4);
++  f[13] = mode; f[14] = id;
++  memcpy(f + 15, &vx, 4);
++  memcpy(f + 19, &vy, 4);
++  memcpy(f + 23, &wz, 4);
++  f[CHASSIS_DATA_LENGTH - 1] = CHASSIS_FRAME_TAIL;
++}
++static void stream(const uint8_t *data, uint32_t len) {
++  chassis_rx_feed_stream(data, (uint16_t)len);
++}
++static void reset_all(void) {
++  memset(&chassis_rx, 0, sizeof(chassis_rx));
++  chassis_rx_last_pos = 0;
++  chassis_rx_seq = 0;
++  memset(&chassis_guard, 0xCD, sizeof(chassis_guard));
++  memset(&raw_guard, 0xCD, sizeof(raw_guard));
++  memset(&data_guard, 0xCD, sizeof(data_guard));
++}
++static int guards_ok(void) {
++  uint32_t i;
++  for (i = 0; i < sizeof(chassis_guard.before); ++i)
++    if (chassis_guard.before[i] != 0xCD || chassis_guard.after[i] != 0xCD) return 0;
++  for (i = 0; i < sizeof(raw_guard.before); ++i)
++    if (raw_guard.before[i] != 0xCD || raw_guard.after[i] != 0xCD) return 0;
++  for (i = 0; i < sizeof(data_guard.before); ++i)
++    if (data_guard.before[i] != 0xCD || data_guard.after[i] != 0xCD) return 0;
++  return 1;
++}
++static int fields_ok(const chassis_data_t *c) {
++  return c->chassis_yaw == 0.25f && c->chassis_pitch == -0.5f &&
++         c->chassis_roll == 1.5f && c->chassis_mode == 1u && c->robot_id == 103u &&
++         c->chassis_vx == 1.25f && c->chassis_vy == -0.75f && c->chassis_wz == 2.5f;
++}
++void test_entry(void) {
++  uint8_t frame[CHASSIS_DATA_LENGTH];
++  uint8_t frame2[CHASSIS_DATA_LENGTH];
++  uint8_t buffer[128];
++  uint8_t garbage[64];
++  chassis_data_t snapshot;
++  uint32_t generation;
++  uint32_t short_len;
++
++  reset_all();
++  make_frame(frame, 0.25f, -0.5f, 1.5f, 1u, 103u, 1.25f, -0.75f, 2.5f);
++
++  /* 完整帧：字段逐项正确，发布计数=1，原始帧留证 */
++  stream(frame, CHASSIS_DATA_LENGTH);
++  check(chassis_rx.stats.frames_ok == 1u, 1);
++  check(fields_ok(&chassis_data), 2);
++  check(memcmp(raw_guard.value, frame, CHASSIS_DATA_LENGTH) == 0, 3);
++  check(chassis_rx_seq == 2u && chassis_rx.length == 0u, 4);
++  check(chassis_data_read(&snapshot, &generation) == 1u && generation == 1u &&
++        fields_ok(&snapshot), 5);
++
++  /* 0..27 字节短包都不发布 */
++  for (short_len = 0; short_len < CHASSIS_DATA_LENGTH; ++short_len) {
++    reset_all();
++    stream(frame, short_len);
++    check(chassis_rx.stats.frames_ok == 0u, 100u + short_len);
++    check(chassis_rx.length == short_len, 200u + short_len);
++  }
++
++  /* 帧起点 0..27：前置任意字节数后整帧仍被接收 */
++  {
++    uint32_t prefix;
++    for (prefix = 0; prefix < CHASSIS_DATA_LENGTH; ++prefix) {
++      reset_all();
++      memset(garbage, 0xAA, sizeof(garbage));
++      stream(garbage, prefix);
++      stream(frame, CHASSIS_DATA_LENGTH);
++      check(chassis_rx.stats.frames_ok == 1u, 300u + prefix);
++      check(fields_ok(&chassis_data), 400u + prefix);
++    }
++  }
++
++  /* 无帧头：全部丢弃且不发布 */
++  reset_all();
++  memset(garbage, 0x00, sizeof(garbage));
++  stream(garbage, sizeof(garbage));
++  check(chassis_rx.stats.frames_ok == 0u && chassis_rx.length == 0u, 6);
++  check(chassis_rx.stats.bytes_discarded == sizeof(garbage), 7);
++
++  /* 帧头出现在 float 载荷：伪起点被拒后必须找回真正的帧头 */
++  reset_all();
++  memset(buffer, 0, sizeof(buffer));
++  buffer[0] = CHASSIS_FRAME_HEAD;            /* 噪声里的 's' */
++  buffer[5] = CHASSIS_FRAME_HEAD;            /* 真帧头插在噪声之后 */
++  memcpy(buffer + 6, frame + 1, CHASSIS_DATA_LENGTH - 1);
++  stream(buffer, 5);
++  check(chassis_rx.stats.frames_ok == 0u, 8);
++  stream(buffer + 5, CHASSIS_DATA_LENGTH);
++  check(chassis_rx.stats.frames_ok == 1u, 9);
++  check(fields_ok(&chassis_data), 10);
++
++  /* 错尾：整帧丢弃，后续合法帧恢复 */
++  reset_all();
++  memcpy(frame2, frame, CHASSIS_DATA_LENGTH);
++  frame2[CHASSIS_DATA_LENGTH - 1] = 'x';
++  stream(frame2, CHASSIS_DATA_LENGTH);
++  check(chassis_rx.stats.frames_ok == 0u && chassis_rx.stats.frames_bad_tail == 1u, 11);
++  stream(frame, CHASSIS_DATA_LENGTH);
++  check(chassis_rx.stats.frames_ok == 1u && fields_ok(&chassis_data), 12);
++
++  /* 逐字节拆包 */
++  reset_all();
++  {
++    uint32_t index;
++    for (index = 0; index < CHASSIS_DATA_LENGTH; ++index) {
++      chassis_rx_feed_byte(frame[index]);
++      if (index + 1u < CHASSIS_DATA_LENGTH)
++        check(chassis_rx.stats.frames_ok == 0u, 500u + index);
++    }
++  }
++  check(chassis_rx.stats.frames_ok == 1u && fields_ok(&chassis_data), 13);
++
++  /* 同一事件两帧/三帧粘包（64 字节缓冲分两次事件） */
++  reset_all();
++  memcpy(buffer, frame, CHASSIS_DATA_LENGTH);
++  memcpy(buffer + 28, frame, CHASSIS_DATA_LENGTH);
++  memcpy(chassis_rx_dma, buffer, 56);
++  chassis_rx_on_event(56);
++  check(chassis_rx.stats.frames_ok == 2u && chassis_rx.stats.dma_events == 1u, 14);
++  check(chassis_rx_last_pos == 56u, 15);
++
++  /* 环形环绕：64 字节整轮 = 2 帧 + 8 字节，再补 20 字节完成第 3 帧 */
++  reset_all();
++  memcpy(chassis_rx_dma, frame, 28);
++  memcpy(chassis_rx_dma + 28, frame, 28);
++  memcpy(buffer, frame, 28);
++  memcpy(chassis_rx_dma + 56, buffer, 8);
++  chassis_rx_on_event(64);
++  check(chassis_rx.stats.frames_ok == 2u && chassis_rx_last_pos == 0u, 16);
++  memcpy(chassis_rx_dma, buffer + 8, 20);
++  chassis_rx_on_event(20);
++  check(chassis_rx.stats.frames_ok == 3u && chassis_rx_last_pos == 20u, 17);
++  check(fields_ok(&chassis_data), 18);
++
++  /* 噪声后恢复 */
++  reset_all();
++  {
++    uint32_t index;
++    for (index = 0; index < 200u; ++index) chassis_rx_feed_byte((uint8_t)(index * 37u));
++  }
++  check(chassis_rx.stats.frames_ok == 0u, 19);
++  stream(frame, CHASSIS_DATA_LENGTH);
++  check(chassis_rx.stats.frames_ok == 1u && fields_ok(&chassis_data), 20);
++
++  /* NaN/Inf 与越界枚举拒绝 */
++  reset_all();
++  make_frame(frame2, NAN, -0.5f, 1.5f, 1u, 103u, 0.0f, 0.0f, 0.0f);
++  stream(frame2, CHASSIS_DATA_LENGTH);
++  check(chassis_rx.stats.frames_ok == 0u && chassis_rx.stats.frames_bad_field == 1u, 21);
++  reset_all();
++  make_frame(frame2, 0.25f, -0.5f, 1.5f, 3u, 103u, 0.0f, 0.0f, 0.0f);
++  stream(frame2, CHASSIS_DATA_LENGTH);
++  check(chassis_rx.stats.frames_ok == 0u && chassis_rx.stats.frames_bad_field == 1u, 22);
++  reset_all();
++  make_frame(frame2, 0.25f, -0.5f, 1.5f, 1u, 103u, 0.0f, 0.0f, 100.0f);
++  stream(frame2, CHASSIS_DATA_LENGTH);
++  check(chassis_rx.stats.frames_ok == 0u, 23);
++
++  /* 错误后恢复：解析器与消费位置重置，旧帧不得冒充新帧 */
++  reset_all();
++  stream(frame, 10);
++  chassis_rx.length = 0;
++  chassis_rx_last_pos = 0;
++  dma_start_count = 0;
++  chassis_rx_restart();
++  check(last_dma_buf == chassis_rx_dma && last_dma_size == USART1_RX_DMA_SIZE, 24);
++  check(chassis_rx_last_pos == 0u && dma_start_count == 1u, 25);
++  stream(frame, CHASSIS_DATA_LENGTH);
++  check(chassis_rx.stats.frames_ok == 1u && fields_ok(&chassis_data), 26);
++
++  /* 非法事件长度：有界丢弃并重启 */
++  reset_all();
++  chassis_rx_on_event(USART1_RX_DMA_SIZE + 1u);
++  check(chassis_rx.stats.overflow == 1u && chassis_rx_last_pos == 0u, 27);
++
++  /* 512/28 缓冲错配回归：启动与错误重启必须使用同一个 DMA 缓冲与长度 */
++  reset_all();
++  dma_start_count = 0;
++  chassis_rx_restart();
++  check(last_dma_buf == chassis_rx_dma && last_dma_size == USART1_RX_DMA_SIZE, 30);
++  huart1.Instance = USART1;
++  reset_all();
++  stream(frame, 10);
++  HAL_UART_ErrorCallback(&huart1);
++  check(last_dma_buf == chassis_rx_dma && last_dma_size == USART1_RX_DMA_SIZE, 31);
++  check(chassis_rx.length == 0u && chassis_rx_last_pos == 0u, 32);
++  stream(frame, CHASSIS_DATA_LENGTH);
++  check(chassis_rx.stats.frames_ok == 1u && fields_ok(&chassis_data), 33);
++
++  /* start_index 残留回归：已发布帧 A 后喂不含帧头的字节，业务状态不得被改写 */
++  reset_all();
++  stream(frame, CHASSIS_DATA_LENGTH);
++  check(fields_ok(&chassis_data), 34);
++  {
++    uint8_t noise[27];
++    memset(noise, 0x5A, sizeof(noise));   /* 'Z'，不含 's' 与帧尾 */
++    stream(noise, sizeof(noise));
++    check(chassis_rx.stats.frames_ok == 1u, 35);   /* 仍只有帧 A */
++  }
++  check(fields_ok(&chassis_data), 36);
++  check(chassis_rx.length == 0u && chassis_rx.stats.bytes_discarded == 27u, 37);
++
++  check(guards_ok(), 28);
++  check(chassis_rx.stats.bytes_seen > 0u, 29);
++  test_result.status = 0x600D;
++  __asm("bkpt 0");
++}
++'''
++
++
++# ---------------------------------------------------------------------------
++# B02-02 UART5 DBUS frame validation (P03)
++# ---------------------------------------------------------------------------
++def rc_source():
++    header = read_source(ROOT / "User/APP/remote_control.h")
++    bus_header = read_source(ROOT / "User/Bsp/bsp_usart.h")
++    values = {name: define(header, name)
++              for name in ["RC_CH_VALUE_MIN_RAW", "RC_CH_VALUE_MAX_RAW"]}
++    values["RC_FRAME_LENGTH"] = define(bus_header, "RC_FRAME_LENGTH")
++    code = functions(read_source(ROOT / "User/APP/remote_control.c"))
++    order = ["rc_frame_parse", "sbus_to_rc", "rc_frame_validate", "rc_publish",
++             "rc_try_frame", "remote_control_rx_chunk", "remote_control_rx_overflow",
++             "rc_ctrl_snapshot"]
++
++    signatures = {
++        "rc_frame_parse": "static void rc_frame_parse(const uint8_t *sbus_buf, RC_ctrl_t *out)",
++        "sbus_to_rc": "void sbus_to_rc(uint8_t *sbus_buf, RC_ctrl_t *rc_ctrl, remoter_t *remoter)",
++        "rc_frame_validate": "static uint8_t rc_frame_validate(const uint8_t *sbus_buf)",
++        "rc_publish": "static void rc_publish(const RC_ctrl_t *parsed)",
++        "rc_try_frame": "static void rc_try_frame(const uint8_t *frame)",
++        "remote_control_rx_chunk": "void remote_control_rx_chunk(const uint8_t *data, uint16_t len)",
++        "remote_control_rx_overflow": "void remote_control_rx_overflow(void)",
++        "rc_ctrl_snapshot": "uint8_t rc_ctrl_snapshot(RC_ctrl_t *out, uint32_t *generation)",
++    }
++    joins = [signatures[name] + " " + code[name] + "\n" for name in order]
++    return r'''
++#include <stdint.h>
++#include <stddef.h>
++#include <string.h>
++typedef __packed struct
++{
++    __packed struct { int16_t ch[5]; char s[2]; } rc;
++    __packed struct { int16_t x, y, z; uint8_t press_l, press_r; } mouse;
++    __packed struct { uint16_t v; } key;
++    uint32_t last_fdb;
++    volatile uint32_t generation;
++} RC_ctrl_t;
++typedef struct { uint32_t chunks, frames_ok, bad_channel, bad_switch, rejected_chunks,
++                 discarded_bytes, overflow, restarts; } rc_rx_stats_t;
++typedef struct { uint8_t ch[5]; uint8_t s; } remoter_t;
++typedef struct { void *Instance; } UART_HandleTypeDef;
++#define RC_CH_VALUE_OFFSET ((uint16_t)1024)
++#define RC_SW_UP 1u
++#define RC_SW_MID 3u
++#define RC_SW_DOWN 2u
++#define __DMB() ((void)0)
++''' + "\n".join("#define %s %s" % (k, v) for k, v in values.items()) + r'''
++#define RC_CH_VALUE_VALID(s) (((s) >= RC_CH_VALUE_MIN_RAW) && ((s) <= RC_CH_VALUE_MAX_RAW))
++#define RC_SWITCH_VALID(s) ((s) >= RC_SW_UP && (s) <= RC_SW_MID)
++uint32_t fake_tick = 0x1234u;
++uint32_t HAL_GetTick(void) { return fake_tick; }
++RC_ctrl_t rc_ctrl;
++remoter_t remoter;
++static volatile uint32_t rc_publish_seq;
++static uint32_t rc_frame_count;
++static rc_rx_stats_t rc_rx_stats;
++volatile struct { uint32_t status, checks, failure; } test_result;
++''' + "".join(joins) + r'''
++void check(int condition, uint32_t number) {
++  ++test_result.checks;
++  if (!condition && test_result.failure == 0u) test_result.failure = number;
++}
++static uint16_t low11(int16_t value) { return (uint16_t)(value + 1024); }
++static void make_rc(uint8_t *f, int16_t ch0, int16_t ch1, int16_t ch2, int16_t ch3,
++                    uint8_t sw0, uint8_t sw1) {
++  uint64_t bits = (uint64_t)low11(ch0)
++                | ((uint64_t)low11(ch1) << 11)
++                | ((uint64_t)low11(ch2) << 22)
++                | ((uint64_t)low11(ch3) << 33)
++                | ((uint64_t)(sw0 & 0x03u) << 44)
++                | ((uint64_t)(sw1 & 0x03u) << 46);
++  memset(f, 0, RC_FRAME_LENGTH);
++  f[0] = (uint8_t)(bits & 0xFF);
++  f[1] = (uint8_t)((bits >> 8) & 0xFF);
++  f[2] = (uint8_t)((bits >> 16) & 0xFF);
++  f[3] = (uint8_t)((bits >> 24) & 0xFF);
++  f[4] = (uint8_t)((bits >> 32) & 0xFF);
++  f[5] = (uint8_t)((bits >> 40) & 0xFF);
++  f[6] = 0x11; f[7] = 0x22;
++  f[8] = 0x33; f[9] = 0x44;
++  f[10] = 0x55; f[11] = 0x66;
++  f[12] = 1; f[13] = 0;
++  f[14] = 0x78; f[15] = 0x56;
++  f[16] = 0x00; f[17] = 0x00;
++}
++static void reset_all(void) {
++  memset(&rc_ctrl, 0, sizeof(rc_ctrl));
++  memset(&rc_rx_stats, 0, sizeof(rc_rx_stats));
++  rc_publish_seq = 0;
++  rc_frame_count = 0;
++}
++void test_entry(void) {
++  uint8_t frame[RC_FRAME_LENGTH];
++  uint8_t block[2 * RC_FRAME_LENGTH];
++  uint16_t length;
++  RC_ctrl_t snapshot;
++  uint32_t generation;
++
++  /* 正常帧：字段、时间戳、generation */
++  reset_all();
++  fake_tick = 0xFFFFF000u;
++  make_rc(frame, 100, -200, 300, -400, RC_SW_UP, RC_SW_DOWN);
++  remote_control_rx_chunk(frame, RC_FRAME_LENGTH);
++  check(rc_rx_stats.frames_ok == 1u, 1);
++  check(rc_ctrl.rc.ch[0] == 100 && rc_ctrl.rc.ch[1] == -200 &&
++        rc_ctrl.rc.ch[2] == 300 && rc_ctrl.rc.ch[3] == -400, 2);
++  check(rc_ctrl.rc.s[0] == RC_SW_UP && rc_ctrl.rc.s[1] == RC_SW_DOWN, 3);
++  check(rc_ctrl.last_fdb == 0xFFFFF000u, 4);
++  check(rc_ctrl.generation == 1u, 5);
++  check(rc_ctrl.mouse.x == 0x2211 && rc_ctrl.mouse.y == 0x4433 &&
++        rc_ctrl.mouse.z == 0x6655 && rc_ctrl.mouse.press_l == 1 &&
++        rc_ctrl.mouse.press_r == 0 && rc_ctrl.key.v == 0x5678, 6);
++  check(rc_ctrl_snapshot(&snapshot, &generation) == 1u && generation == 1u &&
++        snapshot.rc.ch[0] == 100, 7);
++
++  /* 长度 0..17 / 19..37（含 36 以外）都整块拒绝，不刷新时间戳与 generation */
++  for (length = 0; length <= 37; length++) {
++    if (length == RC_FRAME_LENGTH || length == 2 * RC_FRAME_LENGTH) continue;
++    reset_all();
++    make_rc(frame, 100, 100, 100, 100, RC_SW_UP, RC_SW_UP);
++    remote_control_rx_chunk(frame, length);
++    check(rc_rx_stats.frames_ok == 0u, 100u + length);
++    check(rc_rx_stats.rejected_chunks == 1u, 200u + length);
++    check(rc_ctrl.last_fdb == 0u && rc_ctrl.generation == 0u, 300u + length);
++  }
++
++  /* 36 字节块 = 两帧 */
++  reset_all();
++  make_rc(block, 10, 20, 30, 40, RC_SW_UP, RC_SW_MID);
++  make_rc(block + RC_FRAME_LENGTH, -10, -20, -30, -40, RC_SW_DOWN, RC_SW_UP);
++  remote_control_rx_chunk(block, 2 * RC_FRAME_LENGTH);
++  check(rc_rx_stats.frames_ok == 2u && rc_ctrl.generation == 2u, 8);
++  check(rc_ctrl.rc.ch[0] == -10 && rc_ctrl.rc.ch[3] == -40, 9);
++
++  /* 36 字节块中一帧开关非法：只发布另一帧 */
++  reset_all();
++  make_rc(block, 10, 20, 30, 40, RC_SW_UP, RC_SW_MID);
++  make_rc(block + RC_FRAME_LENGTH, 10, 20, 30, 40, 0, RC_SW_MID);
++  remote_control_rx_chunk(block, 2 * RC_FRAME_LENGTH);
++  check(rc_rx_stats.frames_ok == 1u && rc_rx_stats.bad_switch == 1u, 10);
++
++  /* 开关枚举 0 非法 */
++  reset_all();
++  make_rc(frame, 100, 100, 100, 100, 0, RC_SW_MID);
++  remote_control_rx_chunk(frame, RC_FRAME_LENGTH);
++  check(rc_rx_stats.frames_ok == 0u && rc_rx_stats.bad_switch == 1u, 11);
++  check(rc_ctrl.last_fdb == 0u, 12);
++
++  /* 通道 ±700 边界接受，±701 拒绝 */
++  reset_all();
++  make_rc(frame, 700, -700, 699, -699, RC_SW_UP, RC_SW_UP);
++  remote_control_rx_chunk(frame, RC_FRAME_LENGTH);
++  check(rc_rx_stats.frames_ok == 1u && rc_ctrl.rc.ch[0] == 700 &&
++        rc_ctrl.rc.ch[1] == -700, 13);
++  reset_all();
++  make_rc(frame, 701, -700, 0, 0, RC_SW_UP, RC_SW_UP);
++  remote_control_rx_chunk(frame, RC_FRAME_LENGTH);
++  check(rc_rx_stats.frames_ok == 0u && rc_rx_stats.bad_channel == 1u, 14);
++  reset_all();
++  make_rc(frame, 0, 0, -701, 0, RC_SW_UP, RC_SW_UP);
++  remote_control_rx_chunk(frame, RC_FRAME_LENGTH);
++  check(rc_rx_stats.frames_ok == 0u && rc_rx_stats.bad_channel == 1u, 15);
++
++  /* 坏帧后好帧恢复；坏帧不改变已有值 */
++  reset_all();
++  make_rc(frame, 50, 60, 70, 80, RC_SW_UP, RC_SW_UP);
++  remote_control_rx_chunk(frame, RC_FRAME_LENGTH);
++  make_rc(frame, 701, 0, 0, 0, RC_SW_UP, RC_SW_UP);
++  remote_control_rx_chunk(frame, RC_FRAME_LENGTH);
++  check(rc_rx_stats.frames_ok == 1u && rc_ctrl.rc.ch[0] == 50, 16);
++  make_rc(frame, 11, 22, 33, 44, RC_SW_MID, RC_SW_MID);
++  remote_control_rx_chunk(frame, RC_FRAME_LENGTH);
++  check(rc_rx_stats.frames_ok == 2u && rc_ctrl.rc.ch[0] == 11 &&
++        rc_ctrl.generation == 2u, 17);
++
++  /* 计时回绕 */
++  reset_all();
++  fake_tick = 0xFFFFFFFFu;
++  make_rc(frame, 1, 2, 3, 4, RC_SW_UP, RC_SW_UP);
++  remote_control_rx_chunk(frame, RC_FRAME_LENGTH);
++  check(rc_ctrl.last_fdb == 0xFFFFFFFFu, 18);
++  fake_tick = 5u;
++  make_rc(frame, 5, 6, 7, 8, RC_SW_UP, RC_SW_UP);
++  remote_control_rx_chunk(frame, RC_FRAME_LENGTH);
++  check(rc_ctrl.last_fdb == 5u && rc_ctrl.generation == 2u, 19);
++
++  /* 溢出路径 */
++  reset_all();
++  remote_control_rx_overflow();
++  check(rc_rx_stats.overflow == 1u && rc_rx_stats.rejected_chunks == 1u, 20);
++
++  test_result.status = 0x600D;
++  __asm("bkpt 0");
++}
++'''
++
++
++# ---------------------------------------------------------------------------
++# B02-03 USB CDC hand-off ring and TX buffer lifetime (P08)
++# ---------------------------------------------------------------------------
++def usb_source():
++    code = functions(read_source(ROOT / "User/Communication/example/device/usb_cdc_port.c"))
++    order = ["usb_cdc_port_on_rx", "usb_cdc_port_rx_pump", "usb_cdc_port_write"]
++
++    signatures = {
++        "usb_cdc_port_on_rx": "void usb_cdc_port_on_rx(const uint8_t *data, uint32_t len)",
++        "usb_cdc_port_rx_pump": "void usb_cdc_port_rx_pump(void)",
++        "usb_cdc_port_write": "uint32_t usb_cdc_port_write(void *user, const uint8_t *data, uint32_t len)",
++    }
++    joins = [signatures[name] + " " + code[name] + "\n" for name in order]
++    return r'''
++#include <stdint.h>
++#include <stddef.h>
++#include <string.h>
++#define USB_CDC_RX_RING_SIZE 64u
++#define USB_CDC_TX_STAGE_SIZE 512u
++typedef struct uproto_context uproto_context_t;
++struct uproto_context { int unused; };
++typedef struct { uint32_t dev_state; void *pClassData; } USBD_HandleTypeDef;
++typedef struct { int unused; } uproto_port_ops_t;
++#define USBD_STATE_CONFIGURED 2u
++#define USBD_OK 0u
++#define USBD_FAIL 1u
++#define USBD_BUSY 2u
++typedef struct { uint32_t isr_bytes, isr_dropped, pumped_bytes, tx_frames,
++                 tx_busy_dropped, tx_rejected; } usb_cdc_port_stats_t;
++USBD_HandleTypeDef hUsbDeviceHS;
++static uproto_context_t ctx_object;
++static uproto_context_t *s_ctx = &ctx_object;
++static volatile uint16_t usb_rx_head;
++static volatile uint16_t usb_rx_tail;
++static uint8_t usb_rx_ring[USB_CDC_RX_RING_SIZE];
++static uint8_t usb_tx_stage[USB_CDC_TX_STAGE_SIZE];
++static usb_cdc_port_stats_t usb_stats;
++/* 协议替身：记录任务侧实际收到的字节流 */
++uint8_t rx_seen[512];
++uint32_t rx_seen_len;
++void uproto_on_rx_bytes(uproto_context_t *ctx, const uint8_t *data, uint32_t len) {
++  (void)ctx;
++  if (rx_seen_len + len <= sizeof(rx_seen)) {
++    memcpy(rx_seen + rx_seen_len, data, len);
++    rx_seen_len += len;
++  }
++}
++/* USB 替身：只在“完成”时才把异步读取的指针内容取走，用于证明缓冲寿命 */
++uint8_t usb_busy;
++uint8_t *usb_pending_ptr;
++uint16_t usb_pending_len;
++uint8_t usb_captured[512];
++uint8_t CDC_Transmit_HS(uint8_t *buf, uint16_t len) {
++  if (usb_busy) return USBD_BUSY;
++  usb_pending_ptr = buf;
++  usb_pending_len = len;
++  usb_busy = 1u;
++  return USBD_OK;
++}
++volatile struct { uint32_t status, checks, failure; } test_result;
++''' + "".join(joins) + r'''
++void check(int condition, uint32_t number) {
++  ++test_result.checks;
++  if (!condition && test_result.failure == 0u) test_result.failure = number;
++}
++static void reset_usb(void) {
++  usb_rx_head = 0; usb_rx_tail = 0; usb_busy = 0;
++  usb_pending_ptr = 0; usb_pending_len = 0; rx_seen_len = 0;
++  memset(&usb_stats, 0, sizeof(usb_stats));
++  hUsbDeviceHS.dev_state = USBD_STATE_CONFIGURED;
++  hUsbDeviceHS.pClassData = (void *)1;
++}
++void test_entry(void) {
++  uint8_t data[256];
++  uint8_t stack_buf[64];
++  uint32_t index;
++
++  reset_usb();
++  for (index = 0; index < sizeof(data); ++index) data[index] = (uint8_t)index;
++  usb_cdc_port_on_rx(data, 40);
++  check(usb_stats.isr_bytes == 40u, 1);
++  usb_cdc_port_rx_pump();
++  check(rx_seen_len == 40u && memcmp(rx_seen, data, 40) == 0, 2);
++  check(usb_stats.pumped_bytes == 40u && usb_rx_tail == usb_rx_head, 3);
++
++  /* 交错入环/出环 */
++  usb_cdc_port_on_rx(data + 40, 10);
++  usb_cdc_port_rx_pump();
++  usb_cdc_port_on_rx(data + 50, 10);
++  usb_cdc_port_rx_pump();
++  check(rx_seen_len == 60u && memcmp(rx_seen + 40, data + 40, 20) == 0, 4);
++
++  /* 环满：有界丢弃，计数正确，不破坏已入环数据 */
++  reset_usb();
++  for (index = 0; index < 200u; ++index) usb_cdc_port_on_rx(&data[index % 200], 1);
++  check(usb_stats.isr_dropped > 0u, 5);
++  usb_cdc_port_rx_pump();
++  check(usb_stats.pumped_bytes + usb_stats.isr_dropped == 200u, 6);
++  check(rx_seen_len == usb_stats.pumped_bytes, 7);
++
++  /* TX：调用者栈缓冲在返回后可以被覆盖，USB 读到的仍是原内容 */
++  reset_usb();
++  memset(stack_buf, 0, sizeof(stack_buf));
++  for (index = 0; index < sizeof(stack_buf); ++index) stack_buf[index] = (uint8_t)(0xA0u + index);
++  check(usb_cdc_port_write(NULL, stack_buf, 40) == 40u, 8);
++  check(usb_stats.tx_frames == 1u && usb_pending_len == 40u, 9);
++  memset(stack_buf, 0x5A, sizeof(stack_buf));   /* 模拟调用者复用栈/缓冲 */
++  memcpy(usb_captured, usb_pending_ptr, usb_pending_len);
++  check(usb_captured[0] == 0xA0u && usb_captured[39] == 0xC7u, 10);
++
++  /* BUSY：不覆盖在途缓冲，返回 0 并计数 */
++  check(usb_cdc_port_write(NULL, stack_buf, 8) == 0u, 11);
++  check(usb_stats.tx_busy_dropped == 1u, 12);
++  check(usb_pending_len == 40u, 13);
++  usb_busy = 0; /* 假 USB 完成 */
++  check(usb_cdc_port_write(NULL, stack_buf, 8) == 8u, 14);
++  check(usb_stats.tx_frames == 2u, 15);
++
++  /* 未枚举 / 未绑定类数据：返回 0，不发起发送 */
++  reset_usb();
++  hUsbDeviceHS.dev_state = 0;
++  check(usb_cdc_port_write(NULL, stack_buf, 8) == 0u && usb_stats.tx_rejected == 1u, 16);
++  reset_usb();
++  hUsbDeviceHS.pClassData = 0;
++  check(usb_cdc_port_write(NULL, stack_buf, 8) == 0u && usb_stats.tx_rejected == 1u, 17);
++
++  /* 超过暂存上限：截断到 MTU 并报告实际接受字节数 */
++  reset_usb();
++  {
++    static uint8_t huge[600];
++    check(usb_cdc_port_write(NULL, huge, sizeof(huge)) == 512u, 18);
++  }
++
++  test_result.status = 0x600D;
++  __asm("bkpt 0");
++}
++'''
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
++    parser.add_argument("--results", type=Path, default=DEFAULT_RESULTS)
++    args = parser.parse_args()
++    cache = project_path(args.cache)
++    results = project_path(args.results)
++    cache.mkdir(parents=True, exist_ok=True)
++    results.mkdir(parents=True, exist_ok=True)
++    outcomes = []
++    failures = []
++    for name, source in (("b02-chassis-rx", chassis_source()),
++                         ("b02-rc-rx", rc_source()),
++                         ("b02-usb-handoff", usb_source())):
++        outcome = build(name, source, cache, results)
++        outcomes.append(outcome)
++        print(json.dumps(outcome))
++        if not outcome["passed"]:
++            failures.append(outcome)
++    (results / "summary.json").write_text(json.dumps(outcomes, indent=2), encoding="utf-8")
++    if failures:
++        raise RuntimeError("receive-chain checks failed: " +
++                           json.dumps([f["name"] + ": failure " + str(f["failure"]) for f in failures]))
++    print("all receive-chain checks passed")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/AI_Workspace/tools/validate_b02_before.py b/AI_Workspace/tools/validate_b02_before.py
+new file mode 100644
+index 0000000..eb03f3d
+--- /dev/null
++++ b/AI_Workspace/tools/validate_b02_before.py
+@@ -0,0 +1,300 @@
++"""B02 before-change evidence: run the pre-change parsers against the same expectations.
++
++The sources come from the immutable B02-before snapshot zip, are extracted to a
++cache directory and compiled with ARMCC/Unicorn exactly like the after tests.
++Each harness is expected to FAIL on the acceptance expectations; the tool records
++the first failing expectation as the before-fix reproduction.
++"""
++import argparse
++import json
++import re
++import subprocess
++import sys
++import zipfile
++from pathlib import Path
++
++from audit import read_source
++from project_paths import ARM_BIN, ARTIFACTS, CACHE, DEPENDENCIES, project_path
++from validate_invariants import functions
++
++sys.path.insert(0, str(DEPENDENCIES))
++from elftools.elf.elffile import ELFFile
++from unicorn import Uc, UC_ARCH_ARM, UC_HOOK_CODE, UC_MODE_MCLASS, UC_MODE_THUMB
++from unicorn.arm_const import UC_ARM_REG_SP
++
++SNAPSHOT = "AI_Workspace/snapshots/optimization-2026-11-14-20261114-174009-B02-before/gimbal-sources.zip"
++DEFAULT_CACHE = CACHE / "validation/b02-before"
++DEFAULT_RESULTS = ARTIFACTS / "optimization-2026-11-14/20261114-174009/B02/tests/before"
++
++
++def extract(zip_path, root, names):
++    with zipfile.ZipFile(zip_path) as archive:
++        for name in names:
++            target = root / name
++            target.parent.mkdir(parents=True, exist_ok=True)
++            target.write_bytes(archive.read(name))
++
++
++def build(name, source, cache, results):
++    cache.mkdir(parents=True, exist_ok=True)
++    results.mkdir(parents=True, exist_ok=True)
++    code = cache / (name + ".c")
++    obj = cache / (name + ".o")
++    image = cache / (name + ".axf")
++    code.write_text(source, encoding="utf-8")
++    for command in (
++        [str(ARM_BIN / "armcc.exe"), "--cpu", "Cortex-M7", "--thumb", "--c99",
++         "-O0", "-c", str(code), "-o", str(obj)],
++        [str(ARM_BIN / "armlink.exe"), "--ro_base", "0x10000", "--rw_base", "0x20000000",
++         "--entry", "test_entry", str(obj), "-o", str(image)],
++    ):
++        done = subprocess.run(command, capture_output=True, timeout=60)
++        if done.returncode:
++            raise RuntimeError(name + "\n" + done.stdout.decode("gb18030", errors="replace")
++                               + done.stderr.decode("gb18030", errors="replace"))
++    uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
++    uc.mem_map(0, 0x100000)
++    uc.mem_map(0x20000000, 0x100000)
++    with image.open("rb") as stream:
++        elf = ELFFile(stream)
++        for segment in elf.iter_segments():
++            if segment["p_type"] == "PT_LOAD":
++                uc.mem_write(segment["p_vaddr"], segment.data())
++        for section in elf.iter_sections():
++            if section["sh_flags"] & 2 and section["sh_type"] == "SHT_PROGBITS":
++                uc.mem_write(section["sh_addr"], section.data())
++        symbols = {s.name: s["st_value"] for s in elf.get_section_by_name(".symtab").iter_symbols()}
++        entry = elf["e_entry"]
++    uc.reg_write(UC_ARM_REG_SP, 0x200FF000)
++
++    def stop_on_breakpoint(machine, address, size, _):
++        if machine.mem_read(address, 2) == b"\x00\xbe":
++            machine.emu_stop()
++
++    uc.hook_add(UC_HOOK_CODE, stop_on_breakpoint)
++    uc.emu_start(entry | 1, 0, timeout=20000000, count=4000000)
++    raw = bytes(uc.mem_read(symbols["test_result"], 12))
++    status, checks, failure = (int.from_bytes(raw[i:i + 4], "little") for i in range(0, 12, 4))
++    outcome = {"name": name, "status": hex(status), "checks": checks, "failure": failure,
++               "before_passed_acceptance": status == 0x600D and failure == 0}
++    (results / (name + "-results.json")).write_text(json.dumps(outcome, indent=2), encoding="utf-8")
++    return outcome
++
++
++def before_chassis(before_root):
++    code = functions(read_source(before_root / "User/Bsp/bsp_usart.c"))
++    return r'''
++#include <stdint.h>
++#include <stddef.h>
++#include <string.h>
++typedef float fp32;
++typedef union { float fp32; uint8_t bytes[4]; } fp32_to_bytes;
++typedef struct
++{
++    fp32 chassis_vx, chassis_vy, chassis_wz;
++    fp32 chassis_yaw, chassis_pitch, chassis_roll, cap_voltage;
++    uint8_t chassis_mode, robot_id;
++} chassis_data_t;
++#define CHASSIS_DATA_LENGTH 28
++uint8_t gimbal_receive_data[CHASSIS_DATA_LENGTH];
++chassis_data_t chassis_data;
++volatile struct { uint32_t status, checks, failure; } test_result;
++''' + "void chassis_to_gimbal(uint8_t *data_chassis) " + code["chassis_to_gimbal"] + "\n" \
++  + "static void gimbal_memcpy_data_from_chassis(void) " + code["gimbal_memcpy_data_from_chassis"] + "\n" + r'''
++void check(int condition, uint32_t number) {
++  ++test_result.checks;
++  if (!condition && test_result.failure == 0u) test_result.failure = number;
++}
++static void make_frame(uint8_t *f, float yaw) {
++  fp32_to_bytes value = {.fp32 = yaw};
++  memset(f, 0, CHASSIS_DATA_LENGTH);
++  f[0] = 's';
++  memcpy(f + 1, value.bytes, 4);
++  f[27] = 'e';
++}
++void test_entry(void) {
++  uint8_t frame[CHASSIS_DATA_LENGTH];
++  uint8_t noise[CHASSIS_DATA_LENGTH];
++
++  make_frame(frame, 0.25f);
++  memcpy(gimbal_receive_data, frame, CHASSIS_DATA_LENGTH);
++  gimbal_memcpy_data_from_chassis();
++  check(chassis_data.chassis_yaw == 0.25f, 1);   /* 基线：合法帧可解析 */
++
++  /* 期望：没有 's' 的新数据不得改写业务状态（旧实现复用 start_index 与 temp） */
++  memset(noise, 0xAA, sizeof(noise));
++  memcpy(gimbal_receive_data, noise, CHASSIS_DATA_LENGTH);
++  gimbal_memcpy_data_from_chassis();
++  check(chassis_data.chassis_yaw == 0.25f, 2);
++
++  /* 期望：错尾拒绝（旧实现完全不校验尾字节） */
++  make_frame(frame, 0.5f);
++  frame[CHASSIS_DATA_LENGTH - 1] = 'x';
++  memcpy(gimbal_receive_data, frame, CHASSIS_DATA_LENGTH);
++  gimbal_memcpy_data_from_chassis();
++  check(chassis_data.chassis_yaw == 0.25f, 3);
++
++  /* 期望：半帧/短事件不发布（旧实现忽略 Size，只有 10 字节也会解析整块） */
++  make_frame(frame, 0.75f);
++  memcpy(gimbal_receive_data, frame, 10);
++  memset(gimbal_receive_data + 10, 0x00, CHASSIS_DATA_LENGTH - 10);
++  gimbal_memcpy_data_from_chassis();
++  check(chassis_data.chassis_yaw == 0.25f && chassis_data.chassis_pitch == 0.0f, 4);
++
++  test_result.status = 0x600D;
++  __asm("bkpt 0");
++}
++'''
++
++
++def before_rc(before_root):
++    code = functions(read_source(before_root / "User/APP/remote_control.c"))
++    return r'''
++#include <stdint.h>
++#include <stddef.h>
++#include <string.h>
++typedef float fp32;
++typedef __packed struct
++{
++    __packed struct { int16_t ch[5]; char s[2]; } rc;
++    __packed struct { int16_t x, y, z; uint8_t press_l, press_r; } mouse;
++    __packed struct { uint16_t v; } key;
++    uint32_t last_fdb;
++} RC_ctrl_t;
++typedef struct { uint8_t ch[5]; uint8_t s; } remoter_t;
++#define RC_CH_VALUE_OFFSET ((uint16_t)1024)
++uint32_t fake_tick = 1000u;
++uint32_t HAL_GetTick(void) { return fake_tick; }
++RC_ctrl_t rc_ctrl;
++remoter_t remoter;
++volatile struct { uint32_t status, checks, failure; } test_result;
++''' + "void sbus_to_rc(uint8_t *sbus_buf, RC_ctrl_t *rc_ctrl, remoter_t *remoter) " \
++  + code["sbus_to_rc"] + "\n" + r'''
++void check(int condition, uint32_t number) {
++  ++test_result.checks;
++  if (!condition && test_result.failure == 0u) test_result.failure = number;
++}
++static void make_rc(uint8_t *f, int16_t ch0, int16_t ch1, int16_t ch2, int16_t ch3,
++                    uint8_t sw0, uint8_t sw1) {
++  uint64_t bits = (uint64_t)(uint16_t)(ch0 + 1024)
++                | ((uint64_t)(uint16_t)(ch1 + 1024) << 11)
++                | ((uint64_t)(uint16_t)(ch2 + 1024) << 22)
++                | ((uint64_t)(uint16_t)(ch3 + 1024) << 33)
++                | ((uint64_t)(sw0 & 0x03u) << 44)
++                | ((uint64_t)(sw1 & 0x03u) << 46);
++  memset(f, 0, 18);
++  for (int i = 0; i < 6; ++i) f[i] = (uint8_t)((bits >> (8 * i)) & 0xFF);
++}
++void test_entry(void) {
++  uint8_t frame[18];
++
++  make_rc(frame, 100, 200, 300, 400, 1, 3);
++  sbus_to_rc(frame, &rc_ctrl, &remoter);
++  check(rc_ctrl.rc.ch[0] == 100 && rc_ctrl.rc.s[0] == 1, 1);  /* 基线 */
++
++  /* 期望：开关 0 非法，不发布、不刷新时间戳（旧实现直接发布） */
++  fake_tick = 2000u;
++  make_rc(frame, 100, 200, 300, 400, 0, 0);
++  sbus_to_rc(frame, &rc_ctrl, &remoter);
++  check(rc_ctrl.last_fdb == 1000u, 2);
++
++  /* 期望：通道 701 越界，不发布（旧实现直接发布） */
++  fake_tick = 3000u;
++  make_rc(frame, 701, 0, 0, 0, 1, 3);
++  sbus_to_rc(frame, &rc_ctrl, &remoter);
++  check(rc_ctrl.last_fdb == 1000u, 3);
++
++  test_result.status = 0x600D;
++  __asm("bkpt 0");
++}
++'''
++
++
++def before_usb(before_root):
++    code = functions(read_source(before_root / "User/Communication/example/device/usb_cdc_port.c"))
++    return r'''
++#include <stdint.h>
++#include <stddef.h>
++#include <string.h>
++typedef struct { uint32_t dev_state; void *pClassData; } USBD_HandleTypeDef;
++#define USBD_STATE_CONFIGURED 2u
++#define USBD_OK 0u
++#define USBD_BUSY 2u
++USBD_HandleTypeDef hUsbDeviceHS;
++uint8_t usb_busy;
++uint8_t *usb_pending_ptr;
++uint16_t usb_pending_len;
++uint8_t CDC_Transmit_HS(uint8_t *buf, uint16_t len) {
++  if (usb_busy) return USBD_BUSY;
++  usb_pending_ptr = buf;
++  usb_pending_len = len;
++  usb_busy = 1u;
++  return USBD_OK;
++}
++volatile struct { uint32_t status, checks, failure; } test_result;
++''' + "uint32_t usb_cdc_port_write(void *user, const uint8_t *data, uint32_t len) " \
++  + code["usb_cdc_port_write"] + "\n" + r'''
++void check(int condition, uint32_t number) {
++  ++test_result.checks;
++  if (!condition && test_result.failure == 0u) test_result.failure = number;
++}
++void test_entry(void) {
++  uint8_t stack_buf[40];
++  for (uint32_t i = 0; i < sizeof(stack_buf); ++i) stack_buf[i] = (uint8_t)(0xA0u + i);
++  hUsbDeviceHS.dev_state = USBD_STATE_CONFIGURED;
++  hUsbDeviceHS.pClassData = (void *)1;
++  check(usb_cdc_port_write(NULL, stack_buf, sizeof(stack_buf)) == sizeof(stack_buf), 1);
++  memset(stack_buf, 0x5A, sizeof(stack_buf));   /* 调用者返回后复用缓冲 */
++  check(usb_pending_ptr != NULL && usb_pending_len == sizeof(stack_buf), 2);
++  /* 期望：USB 异步读到的仍是原内容；旧实现直接发送调用者指针，内容已被覆盖 */
++  check(usb_pending_ptr != NULL && usb_pending_ptr[0] == 0xA0u &&
++        usb_pending_ptr[39] == 0xC7u, 3);
++  test_result.status = 0x600D;
++  __asm("bkpt 0");
++}
++'''
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--snapshot", type=Path, default=Path(SNAPSHOT))
++    parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
++    parser.add_argument("--results", type=Path, default=DEFAULT_RESULTS)
++    args = parser.parse_args()
++    cache = project_path(args.cache)
++    results = project_path(args.results)
++    before_root = cache / "sources"
++    names = ["User/Bsp/bsp_usart.c", "User/APP/remote_control.c",
++             "User/Communication/example/device/usb_cdc_port.c"]
++    snapshot = project_path(args.snapshot)
++    if not snapshot.is_file():
++        raise SystemExit("missing before snapshot: " + str(snapshot))
++    extract(snapshot, before_root, names)
++    outcomes = []
++    for name, source in (("b02-before-chassis", before_chassis(before_root)),
++                         ("b02-before-rc", before_rc(before_root)),
++                         ("b02-before-usb", before_usb(before_root))):
++        outcome = build(name, source, cache, results)
++        outcomes.append(outcome)
++        print(json.dumps(outcome))
++    (results / "summary.json").write_text(json.dumps(outcomes, indent=2), encoding="utf-8")
++    expected = {
++        "b02-before-chassis": 2,
++        "b02-before-rc": 2,
++        "b02-before-usb": 3,
++    }
++    problems = []
++    for outcome in outcomes:
++        wanted = expected[outcome["name"]]
++        if outcome["before_passed_acceptance"]:
++            problems.append(outcome["name"] + ": unexpectedly satisfied acceptance")
++        elif outcome["failure"] != wanted:
++            problems.append("%s: reproduced at check %s, expected %s"
++                            % (outcome["name"], outcome["failure"], wanted))
++    if problems:
++        raise RuntimeError("; ".join(problems))
++    print("before-change failures reproduced at the expected acceptance checks")
++
++
++if __name__ == "__main__":
++    main()

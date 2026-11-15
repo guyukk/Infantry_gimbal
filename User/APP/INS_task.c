@@ -1,3 +1,4 @@
+#include "health.h"
 /**
   *********************************************************************
   * @file      ins_task.c/h
@@ -81,6 +82,13 @@ void INS_task(void const *pvParameters)
 		mahony.dt = ins_dt;
 
     BMI088_Read(&BMI088);
+    if (!BMI088_sample_valid || !isfinite(BMI088.Accel[0]) || !isfinite(BMI088.Accel[1]) ||
+        !isfinite(BMI088.Accel[2]) || !isfinite(BMI088.Gyro[0]) || !isfinite(BMI088.Gyro[1]) || !isfinite(BMI088.Gyro[2]))
+    {
+        health_reject(HEALTH_IMU);
+        osDelay(1);
+        continue; /* Do not advance the attitude/convergence state with stale SPI data. */
+    }
 
     INS.Accel[X] = BMI088.Accel[X];
     INS.Accel[Y] = BMI088.Accel[Y];
@@ -170,6 +178,9 @@ void INS_task(void const *pvParameters)
 			IMU_Temp_Cnt = 0;
 		}
 		
+    if (INS.ins_flag && isfinite(INS.Yaw) && isfinite(INS.Pitch) && isfinite(INS.Roll))
+        health_touch(HEALTH_IMU,HAL_GetTick());
+    else health_reject(HEALTH_IMU);
     osDelay(1);
 	}
 } 
@@ -398,5 +409,5 @@ fp32 get_YawTotalAngle(void){
   * @retval         gravity_b的指针
   */
 fp32 *get_INS_gravity_point(void){
-	return &gravity_b;
+	return gravity_b;
 }

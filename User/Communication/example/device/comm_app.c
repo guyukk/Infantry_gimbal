@@ -1,3 +1,4 @@
+#include "host_control.h"
 /**
  * @file       comm_app.c
  * @brief      设备侧通信应用入口（FreeRTOS 任务）
@@ -13,6 +14,7 @@
 #include "usb_device.h"
 #include "usbd_cdc_if.h"
 #include "usbd_core.h"
+#include "usb_cdc_port.h"
 
 #include "usart.h"
 #include "bsp_usart.h"
@@ -34,6 +36,8 @@
 #include "auto_aim.h"
 #include "remote_control.h"
 #include "referee.h"
+#include "health.h"
+#include <math.h>
 
 /* 任务配置与通道参数统一放在 comm_app_config.h 中（见 comm_app.h） */
 
@@ -63,9 +67,6 @@ extern game_status_t game_status;
 extern robot_status_t robot_status;
 extern projectile_allowance_t projectile_allowance;
 
-#ifndef COMM_HOST_CMD_TIMEOUT_MS
-#define COMM_HOST_CMD_TIMEOUT_MS 120u
-#endif
 
 #ifndef COMM_REFEREE_PUB_PERIOD_MS
 #define COMM_REFEREE_PUB_PERIOD_MS 50u
@@ -79,27 +80,7 @@ extern projectile_allowance_t projectile_allowance;
 #define COMM_REFEREE_STALE_TIMEOUT_MS 1000u
 #endif
 
-#ifndef COMM_FIRE_SINGLE_PULSE_MS
-#define COMM_FIRE_SINGLE_PULSE_MS 20u
-#endif
 
-typedef struct {
-    uint8_t valid;
-    gimbal_fire_cmd_t cmd;
-    uint64_t rx_us;
-    uint64_t single_pulse_until_us;
-    uint64_t last_single_token;
-} host_fire_state_t;
-
-typedef struct {
-    uint8_t valid;
-    gimbal_chassis_cmd_t cmd;
-    uint64_t rx_us;
-} host_chassis_state_t;
-
-static host_fire_state_t g_host_fire = {0};
-static host_chassis_state_t g_host_chassis = {0};
-static uint8_t g_rc_injected = 0;
 static uint64_t g_referee_last_pub_us = 0;
 static uint8_t g_referee_query_seen = 0;
 static uint8_t g_referee_force_pub = 0;
@@ -126,40 +107,15 @@ static void comm_publish_referee(uint64_t now_us);
 static void tfmini_tick(void);
 #endif
 
-static const float kMdegToRad = 1.7453292519943296e-5f;
 
-static int32_t clamp_i32(int32_t v, int32_t lo, int32_t hi)
-{
-    if(v < lo) return lo;
-    if(v > hi) return hi;
-    return v;
-}
 
-static RC_ctrl_t *comm_get_rc_ptr(void)
-{
-    return (RC_ctrl_t *)get_remote_control_point();
-}
 
-static uint8_t comm_autoaim_enabled(void)
-{
-    return (aim.auto_aim_flag == AIM_ON) ? 1u : 0u;
-}
 
-static void comm_clear_rc_injection(void)
-{
-    RC_ctrl_t *rc = comm_get_rc_ptr();
-    if(!rc)
-        return;
 
-    rc->rc.ch[CHASSIS_X_CHANNEL] = 0;
-    rc->rc.ch[CHASSIS_Y_CHANNEL] = 0;
-    rc->rc.ch[CHASSIS_WZ_CHANNEL] = 0;
-    rc->rc.s[CHASSIS_MODE_CHANNEL] = (char)RC_SW_MID;
-    rc->rc.s[CHASSIS_FOLLOW_CHANNEL] = (char)RC_SW_MID;
 
-    rc->mouse.press_l = 0u;
-    rc->key.v &= (uint16_t) ~(SHOOT_ON_KEYBOARD | SHOOT_OFF_KEYBOARD);
-}
+
+
+
 
 /**
  * @brief          自定义流通道的接收回调
@@ -285,7 +241,8 @@ void comm_camera_trigger_poll(void) {
 void comm_app_task(void const *arg) {
     (void)arg;
     extern USBD_HandleTypeDef hUsbDeviceHS;
-		MX_USB_DEVICE_Init();
+    /* USB 由 defaultTask 唯一初始化（P08）；本任务只等待枚举，超时后继续运行，
+       不重复初始化、不在未枚举时解引用 CDC 类数据。 */
 #if defined(TFMINI_ENABLE) && (TFMINI_ENABLE == 1)
     /* Init TFmini RX early; do not wait for USB enumeration. */
     tfmini_uart_init(&huart10);
@@ -303,6 +260,8 @@ void comm_app_task(void const *arg) {
 
     for(;;) {
 #if COMM_PROTO_ENABLE
+        /* P08：USB ISR 只入有界环，协议解析在这里做，避免 ISR/任务并发 */
+        usb_cdc_port_rx_pump();
         uproto_tick(&proto_ctx);
         camera_channel_tick(&g_camera);
         ch_uproto_arbiter_tick(&g_bind);
@@ -342,30 +301,31 @@ void comm_app_start(void) {
  * @retval         true：成功获取；false：不可用
  * @note           示例使用已有的 gimbal/INS 数据源进行单位换算到“微度”
  */
+static bool gimbal_radians_to_udeg(fp32 radians,int32_t *out)
+{
+    fp32 value=radians*(180000000.0f/PI);
+    if(!isfinite(value) || value< -2147483648.0f || value>=2147483648.0f) return false;
+    *out=(int32_t)value;return true;
+}
+
 static bool gimbal_get_state(gimbal_state_t *out, void *user) {
+gimbal_state_t value;
+    const gimbal_motor_t *yaw=get_yaw_motor_point(),*pit=get_pitch_motor_point();
+    fp32 *imu=get_INS_angle_point();
+    uint32_t key,now;
+    bool ready;
     (void)user;
-    if(!out)
-        return false;
-    const gimbal_motor_t *yaw = get_yaw_motor_point();
-    const gimbal_motor_t *pit = get_pitch_motor_point();
-    fp32 *imu = get_INS_angle_point();
-    const float INV_PI = 0.31830988618379067154f; /* 1/pi */
-    if(yaw && pit) {
-        out->enc_yaw = (int32_t)(yaw->radian_of_ecd * 180000000.0f * INV_PI);
-        out->enc_pitch = (int32_t)(pit->radian_of_ecd * 180000000.0f * INV_PI);
-    } else {
-        out->enc_yaw = 0;
-        out->enc_pitch = 0;
-    }
-    if(imu) {
-        out->yaw_udeg = (int32_t)(imu[0] * 180000000.0f * INV_PI);
-        out->pitch_udeg = (int32_t)(imu[1] * 180000000.0f * INV_PI);
-        out->roll_udeg = (int32_t)(imu[2] * 180000000.0f * INV_PI);
-    } else {
-        out->yaw_udeg = out->pitch_udeg = out->roll_udeg = 0;
-    }
-    out->ts_us = sync_now_us(NULL);
-    return true;
+    if(!out || !yaw || !pit || !imu) return false;
+    key=__get_PRIMASK();__disable_irq();now=HAL_GetTick();
+    ready=health_fresh(HEALTH_YAW,now) && health_fresh(HEALTH_PITCH,now) && health_fresh(HEALTH_IMU,now) &&
+        gimbal_radians_to_udeg(yaw->radian_of_ecd,&value.enc_yaw) &&
+        gimbal_radians_to_udeg(pit->radian_of_ecd,&value.enc_pitch) &&
+        gimbal_radians_to_udeg(imu[0],&value.yaw_udeg) &&
+        gimbal_radians_to_udeg(imu[1],&value.pitch_udeg) &&
+        gimbal_radians_to_udeg(imu[2],&value.roll_udeg);
+    __set_PRIMASK(key);
+    if(!ready) return false;
+    value.ts_us=sync_now_us(NULL);*out=value;return true;
 }
 
 /**
@@ -390,49 +350,13 @@ static void gimbal_on_delta(const gimbal_delta_t *d, void *user) {
 static void gimbal_on_fire(const gimbal_fire_cmd_t *cmd, void *user)
 {
     (void)user;
-    if(!cmd)
-        return;
-    if(!comm_autoaim_enabled())
-        return;
-
-    const uint64_t now_us = sync_now_us(NULL);
-    const int32_t prev_fire_on = g_host_fire.cmd.fire_on;
-
-    g_host_fire.cmd = *cmd;
-    g_host_fire.rx_us = now_us;
-    g_host_fire.valid = 1u;
-
-    if(cmd->fire_on) {
-        const uint8_t single_mode = (cmd->fire_mode == 1 || (cmd->fire_mode == 0 && cmd->burst_count <= 1)) ? 1u : 0u;
-        if(single_mode) {
-            uint8_t need_pulse = 0u;
-            if(cmd->ts_us != 0) {
-                if(cmd->ts_us != g_host_fire.last_single_token) {
-                    need_pulse = 1u;
-                    g_host_fire.last_single_token = cmd->ts_us;
-                }
-            } else if(prev_fire_on == 0) {
-                need_pulse = 1u;
-                g_host_fire.last_single_token = now_us;
-            }
-            if(need_pulse) {
-                g_host_fire.single_pulse_until_us = now_us + (uint64_t)COMM_FIRE_SINGLE_PULSE_MS * 1000ULL;
-            }
-        }
-    }
+    if (cmd != NULL) (void)host_fire_submit(cmd->fire_on,cmd->fire_mode,cmd->burst_count,cmd->status,cmd->ts_us);
 }
 
 static void gimbal_on_chassis(const gimbal_chassis_cmd_t *cmd, void *user)
 {
-    (void)user;
-    if(!cmd)
-        return;
-    if(!comm_autoaim_enabled())
-        return;
-
-    g_host_chassis.cmd = *cmd;
-    g_host_chassis.rx_us = sync_now_us(NULL);
-    g_host_chassis.valid = 1u;
+    (void)cmd;(void)user;
+    host_chassis_reject(); /* This firmware has no host chassis motion channel. */
 }
 
 static void gimbal_on_referee_query(void *user)
@@ -444,105 +368,8 @@ static void gimbal_on_referee_query(void *user)
 
 static void comm_apply_host_controls(uint64_t now_us)
 {
-    const uint64_t timeout_us = (uint64_t)COMM_HOST_CMD_TIMEOUT_MS * 1000ULL;
-    uint8_t fire_active = 0u;
-    uint8_t chassis_active = 0u;
-
-    if(!comm_autoaim_enabled()) {
-        g_host_fire.valid = 0u;
-        g_host_chassis.valid = 0u;
-        g_host_fire.single_pulse_until_us = 0;
-        if(g_rc_injected) {
-            comm_clear_rc_injection();
-            g_rc_injected = 0u;
-        }
-        return;
-    }
-
-    if(g_host_fire.valid && (now_us - g_host_fire.rx_us) <= timeout_us)
-        fire_active = 1u;
-    if(g_host_chassis.valid && (now_us - g_host_chassis.rx_us) <= timeout_us)
-        chassis_active = 1u;
-
-    if(g_host_fire.valid && !fire_active) {
-        g_host_fire.valid = 0u;
-        g_host_fire.single_pulse_until_us = 0;
-    }
-    if(g_host_chassis.valid && !chassis_active) {
-        g_host_chassis.valid = 0u;
-    }
-
-    if(!fire_active && !chassis_active) {
-        if(g_rc_injected) {
-            comm_clear_rc_injection();
-            g_rc_injected = 0u;
-        }
-        return;
-    }
-
-    RC_ctrl_t *rc = comm_get_rc_ptr();
-    if(!rc)
-        return;
-
-    if(chassis_active) {
-        const float vx_m_s = (float)g_host_chassis.cmd.vx_mm_s * 0.001f;
-        const float vy_m_s = (float)g_host_chassis.cmd.vy_mm_s * 0.001f;
-        const float wz_rad_s = (float)g_host_chassis.cmd.wz_mdeg_s * kMdegToRad;
-
-        int32_t ch_x = (int32_t)(vx_m_s / CHASSIS_VX_RC_SEN);
-        int32_t ch_y = (int32_t)(-vy_m_s / CHASSIS_VY_RC_SEN);
-        int32_t ch_wz = (int32_t)(-wz_rad_s / 0.01f);
-
-        ch_x = clamp_i32(ch_x, -660, 660);
-        ch_y = clamp_i32(ch_y, -660, 660);
-        ch_wz = clamp_i32(ch_wz, -660, 660);
-
-        rc->rc.ch[CHASSIS_X_CHANNEL] = (int16_t)ch_x;
-        rc->rc.ch[CHASSIS_Y_CHANNEL] = (int16_t)ch_y;
-        rc->rc.ch[CHASSIS_WZ_CHANNEL] = (int16_t)ch_wz;
-
-        switch(g_host_chassis.cmd.mode) {
-            default:
-            case 0: /* no follow yaw */
-                rc->rc.s[CHASSIS_MODE_CHANNEL] = (char)RC_SW_DOWN;
-                rc->rc.s[CHASSIS_FOLLOW_CHANNEL] = (char)RC_SW_UP;
-                break;
-            case 1: /* follow gimbal yaw */
-                rc->rc.s[CHASSIS_MODE_CHANNEL] = (char)RC_SW_DOWN;
-                rc->rc.s[CHASSIS_FOLLOW_CHANNEL] = (char)RC_SW_DOWN;
-                break;
-            case 2: /* spin */
-                rc->rc.s[CHASSIS_MODE_CHANNEL] = (char)RC_SW_UP;
-                rc->rc.s[CHASSIS_FOLLOW_CHANNEL] = (char)RC_SW_MID;
-                break;
-            case 3: /* no move */
-                rc->rc.s[CHASSIS_MODE_CHANNEL] = (char)RC_SW_MID;
-                rc->rc.s[CHASSIS_FOLLOW_CHANNEL] = (char)RC_SW_MID;
-                break;
-        }
-    } else {
-        rc->rc.ch[CHASSIS_X_CHANNEL] = 0;
-        rc->rc.ch[CHASSIS_Y_CHANNEL] = 0;
-        rc->rc.ch[CHASSIS_WZ_CHANNEL] = 0;
-        rc->rc.s[CHASSIS_MODE_CHANNEL] = (char)RC_SW_MID;
-        rc->rc.s[CHASSIS_FOLLOW_CHANNEL] = (char)RC_SW_MID;
-    }
-
-    rc->key.v &= (uint16_t) ~(SHOOT_ON_KEYBOARD | SHOOT_OFF_KEYBOARD);
-    if(fire_active && g_host_fire.cmd.fire_on) {
-        const uint8_t continuous_mode = (g_host_fire.cmd.fire_mode == 2 || g_host_fire.cmd.burst_count > 1) ? 1u : 0u;
-        rc->key.v |= SHOOT_ON_KEYBOARD;
-        if(continuous_mode) {
-            rc->mouse.press_l = 1u;
-        } else {
-            rc->mouse.press_l = (now_us <= g_host_fire.single_pulse_until_us) ? 1u : 0u;
-        }
-    } else {
-        rc->mouse.press_l = 0u;
-        rc->key.v |= SHOOT_OFF_KEYBOARD;
-    }
-
-    g_rc_injected = 1u;
+    (void)now_us;
+    host_control_tick();
 }
 
 static void comm_publish_referee(uint64_t now_us)
@@ -560,36 +387,20 @@ static void comm_publish_referee(uint64_t now_us)
     }
 
     gimbal_referee_t msg;
-    uint16_t status = 0u;
-    const uint8_t rid = robot_status.robot_id;
-    msg.robot_id = (int32_t)rid;
-    msg.game_stage = (int32_t)game_status.game_progress;
-
-    if(rid >= 1u && rid <= 99u) {
-        msg.enemy_team = 2; /* enemy is blue */
-    } else if(rid >= 100u) {
-        msg.enemy_team = 1; /* enemy is red */
-    } else {
-        msg.enemy_team = 0;
-    }
-
-    if(referee_data_available(COMM_REFEREE_STALE_TIMEOUT_MS)) {
-        status |= GIMBAL_REFEREE_STATUS_VALID;
-        msg.fire_allowed =
-          ((robot_status.power_management_shooter_output != 0u) &&
-           ((projectile_allowance.projectile_allowance_17mm > 0u) ||
-            (projectile_allowance.projectile_allowance_42mm > 0u))) ? 1 : 0;
-    } else {
-        status |= GIMBAL_REFEREE_STATUS_NOT_READY;
-        status |= GIMBAL_REFEREE_STATUS_TIMEOUT;
-        msg.fire_allowed = 0;
-        msg.enemy_team = 0;
-    }
-
-    if(!((rid >= 1u && rid <= 99u) || (rid >= 100u && rid <= 199u))) {
-        status |= GIMBAL_REFEREE_STATUS_ERROR;
-    }
-    msg.status = status;
+    chassis_data_t identity;
+    uint32_t key=__get_PRIMASK(),now;
+    uint8_t rid=0U;
+    memset(&msg,0,sizeof(msg));
+    __disable_irq();now=HAL_GetTick();
+    if(health_fresh(HEALTH_BOARD,now) && chassis_data_read(&identity,NULL))
+        rid=identity.robot_id;
+    __set_PRIMASK(key);
+    if(!((rid>=1U && rid<=7U)||(rid>=101U && rid<=107U))) rid=0U;
+    msg.robot_id=rid; /* Identity reference only; no forwarded heat/ammunition/permission. */
+    msg.enemy_team=rid ? (rid<100U ? 2:1):0;
+    msg.fire_allowed=0;
+    msg.status=GIMBAL_REFEREE_STATUS_NOT_READY|GIMBAL_REFEREE_STATUS_TIMEOUT;
+    if(!rid) msg.status|=GIMBAL_REFEREE_STATUS_ERROR;
     msg.ts_us = now_us;
 
     (void)gimbal_channel_publish_referee(&g_gimbal, &msg);

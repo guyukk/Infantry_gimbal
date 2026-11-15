@@ -1,3 +1,4 @@
+#include "health.h"
 #include "yaw_pitch_direct.h"
 #include "gimbal_task.h"
 #include "main.h"
@@ -24,6 +25,38 @@ int16_t yaw_can_set_current = 0, shoot_can_set_current = 0;
 uint8_t enable = 1;
 volatile pitch_dm_enable_status_t pitch_dm_enable_status;
 static uint8_t yaw_init_hold_valid;
+
+/* Every recovery starts from measured position, never old PID/position history. */
+static void gimbal_reset_motor(gimbal_motor_t *motor)
+{
+    gimbal_PID_clear(&motor->gimbal_motor_absolute_angle_pid);
+    gimbal_PID_clear(&motor->gimbal_motor_relative_angle_pid);
+    PID_clear(&motor->gimbal_motor_gyro_pid);
+    motor->absolute_angle_set=motor->absolute_angle;
+    motor->relative_angle_set=motor->emit_pos_set=motor->relative_angle;
+    motor->motor_gyro_set=motor->raw_cmd_current=motor->current_set=0.0f;
+    motor->given_current=0;
+}
+static uint8_t gimbal_axis_ready(gimbal_control_t *control,uint8_t pitch)
+{
+    static uint32_t epochs[2];
+    static uint8_t was_ready[2];
+    uint8_t gate=pitch ? HEALTH_GATE_PITCH : HEALTH_GATE_YAW;
+    gimbal_motor_t *motor=pitch ? &control->gimbal_pitch_motor : &control->gimbal_yaw_motor;
+    uint32_t mask=pitch ? HEALTH_PITCH_MASK : HEALTH_YAW_MASK;
+    uint8_t ready;
+    if (motor->gimbal_motor_mode == GIMBAL_MOTOR_GYRO) mask |= HEALTH_BIT(HEALTH_IMU);
+    ready=health_gate_ready(gate,mask,HAL_GetTick());
+    if (!ready || !was_ready[pitch] || epochs[pitch] != health_gate_epoch(gate))
+    {
+        gimbal_reset_motor(motor);
+        if (pitch) pitch_dm_enable_status.mit_target_valid=0U;
+        else yaw_init_hold_valid=0U;
+    }
+    epochs[pitch]=health_gate_epoch(gate);
+    was_ready[pitch]=ready;
+    return ready;
+}
 
 static uint8_t pitch_dm_feedback_allows_mit(const dm_measure_t *motor);
 
@@ -92,7 +125,7 @@ static uint8_t pitch_dm_enable_ready(const dm_measure_t *measure)
     now = HAL_GetTick();
     feedback_tick = measure->fdb.last_fdb_time;
     if (pitch_dm_enable_status.confirmed &&
-        (feedback_tick == 0U ||
+        (!health_fresh(HEALTH_PITCH,now) ||
          (uint32_t)(now - feedback_tick) > PITCH_MIT_FEEDBACK_TIMEOUT_MS ||
          measure->fdb.state != 1U))
     {
@@ -105,7 +138,7 @@ static uint8_t pitch_dm_enable_ready(const dm_measure_t *measure)
         pitch_dm_enable_status.mit_target_valid = 0U;
         pitch_dm_enable_status.last_attempt_tick = now;
     }
-    if (feedback_tick != 0U &&
+    if (health_fresh(HEALTH_PITCH,now) &&
         (int32_t)(feedback_tick - pitch_dm_enable_status.last_attempt_tick) > 0 &&
         (uint32_t)(now - feedback_tick) <= PITCH_MIT_FEEDBACK_TIMEOUT_MS &&
         measure->fdb.state == 1U)
@@ -160,7 +193,7 @@ static uint8_t pitch_dm_feedback_allows_mit(const dm_measure_t *motor)
 static uint8_t pitch_dm_rc_ready(const RC_ctrl_t *rc, uint32_t now)
 {
     uint8_t i;
-    if (rc == NULL || rc->last_fdb == 0U ||
+    if (rc == NULL || !health_fresh(HEALTH_RC,now) ||
         (uint32_t)(now - rc->last_fdb) > PITCH_DM_RC_TIMEOUT_MS ||
         rc->rc.s[GIMBAL_MODE_CHANNEL] == 0U ||
         toe_is_error(DBUS_TOE))
@@ -194,7 +227,8 @@ static uint8_t pitch_dm_send_mit(gimbal_control_t *control_send)
 
     motor->set.VEL = 0.0f;
     motor->set.TOR = 0.0f;
-    can_hold = (motor->fdb.last_fdb_time != 0U &&
+    can_hold = (gimbal_axis_ready(control_send,1U) &&
+                health_fresh(HEALTH_PITCH,now) &&
                 (uint32_t)(now - motor->fdb.last_fdb_time) <= PITCH_MIT_FEEDBACK_TIMEOUT_MS &&
                 pitch_dm_feedback_allows_mit(motor) &&
                 (pitch_dm_enable_status.confirmed ||
@@ -301,26 +335,18 @@ static uint8_t pitch_dm_send_mit(gimbal_control_t *control_send)
   */
 __attribute__((used)) void gimbal_send_cmd(gimbal_control_t *control_send)
 {
-	if(debug == 0)
-	{
-		(void)pitch_dm_enable_ready(control_send->gimbal_pitch_motor.gimbal_DM_measure);
-		yaw_can_set_current = yaw_cuurent_set_polarity * control_send->gimbal_yaw_motor.given_current;
-		
-		if (!(toe_is_error(YAW_GIMBAL_MOTOR_TOE) && toe_is_error(PITCH_GIMBAL_MOTOR_TOE) && toe_is_error(TRIGGER_MOTOR_TOE)))
-		{
-			if(toe_is_error(DBUS_TOE)){ CAN_cmd_gimbal(0, 0, 0, 0); }
-			else
-			{
-				// yaw + trigger use DJI CAN; pitch uses DM MIT.
-				CAN_cmd_gimbal(yaw_can_set_current, 0, shoot_can_set_current, 0);
-			}
-			(void)pitch_dm_send_mit(control_send);
-		}
-	}
-	else
-	{
-		CAN_cmd_gimbal(0, 0, 0, 0);
-	}
+    uint8_t yaw_ready, shoot_ready;
+    if (control_send == NULL) return;
+    yaw_ready=gimbal_axis_ready(control_send,0U);
+    shoot_ready=health_gate_ready(HEALTH_GATE_SHOOT,HEALTH_SHOOT_MASK,HAL_GetTick());
+    (void)pitch_dm_enable_ready(control_send->gimbal_pitch_motor.gimbal_DM_measure);
+    yaw_can_set_current=(yaw_ready && gimbal_behaviour != GIMBAL_ZERO_FORCE) ?
+        yaw_cuurent_set_polarity * control_send->gimbal_yaw_motor.given_current : 0;
+    if (!shoot_ready) { shoot_safety_reset(); shoot_can_set_current=0; }
+    CAN_cmd_gimbal(yaw_can_set_current,0,shoot_can_set_current,0);
+    /* Send zero stiffness even in diagnostic mode; do not leave the previous MIT active. */
+
+    (void)pitch_dm_send_mit(control_send);
 }
 
 /**
@@ -515,6 +541,8 @@ __attribute__((used))void gimbal_set_control(gimbal_control_t *set_control)
 		yaw_init_hold_valid = 0U;
 	}
 	
+    if (gimbal_axis_ready(set_control,0U))
+    {
 	//yaw电机模式控制
 	if (set_control->gimbal_yaw_motor.gimbal_motor_mode == GIMBAL_MOTOR_RAW)
 	{
@@ -534,7 +562,7 @@ __attribute__((used))void gimbal_set_control(gimbal_control_t *set_control)
 			// stored calibration limits are not a startup homing target.
 			const dji_measure_t *yaw_fdb = set_control->yaw_dji_measure;
 			uint32_t now = HAL_GetTick();
-			if (yaw_fdb == NULL || yaw_fdb->last_fdb_time == 0U ||
+			if (yaw_fdb == NULL || !health_fresh(HEALTH_YAW,now) ||
 				(uint32_t)(now - yaw_fdb->last_fdb_time) > YAW_INIT_FEEDBACK_TIMEOUT_MS)
 			{
 				yaw_init_hold_valid = 0U;
@@ -546,7 +574,7 @@ __attribute__((used))void gimbal_set_control(gimbal_control_t *set_control)
 				PID_clear(&set_control->gimbal_yaw_motor.gimbal_motor_gyro_pid);
 				yaw_init_hold_valid = 1U;
 			}
-			aim.receive.yaw = 0.0f;
+			(void)auto_aim_take_increment(0U);
 		}
 		else
 		{
@@ -555,6 +583,8 @@ __attribute__((used))void gimbal_set_control(gimbal_control_t *set_control)
 		}
 	}
 
+    }
+    if (!gimbal_axis_ready(set_control,1U)) return;
 	//pitch电机模式控制
 	if (set_control->gimbal_pitch_motor.gimbal_motor_mode == GIMBAL_MOTOR_GYRO)
 	{
@@ -580,6 +610,8 @@ __attribute__((used))void gimbal_control_loop(gimbal_control_t *control_loop)
 		return;
 	}
 
+    if (gimbal_axis_ready(control_loop,0U))
+    {
 	if (control_loop->gimbal_yaw_motor.gimbal_motor_mode == GIMBAL_MOTOR_RAW)
 	{
 		gimbal_motor_raw_angle_control(&control_loop->gimbal_yaw_motor);
@@ -601,6 +633,8 @@ __attribute__((used))void gimbal_control_loop(gimbal_control_t *control_loop)
 		}
 	}
 
+    }
+    if (!gimbal_axis_ready(control_loop,1U)) return;
 	// DM J4310 MIT mode: map the existing Pitch angle target to p_des.
 	if (control_loop->gimbal_pitch_motor.gimbal_motor_mode == GIMBAL_MOTOR_RAW)
 	{

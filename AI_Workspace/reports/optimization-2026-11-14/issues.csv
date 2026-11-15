@@ -1,0 +1,18 @@
+﻿id,board,priority,evidence,title,status,batch,owner,notes
+P01,G,P0,S,USART1 28 字节帧越界/无效数据/错误恢复,verified_software,B02,gimbal-dev,35/35 跨板接收交叉复验；G 本地流式接收 178/178；补修 TC/IDLE 重放与延迟 HT，按当前 NDTR 消费；2026-11-15 见 B02-收尾签收报告.md
+P02,C,P0,S,USART1 未验证完整 46 字节帧,verified_software,B02,chassis-dev,35/35 跨板接收交叉复验；C 串口 31/31；补接 HT/TC，连续无 IDLE 三帧可发布；USART6/软转向回归通过；2026-11-15 见 B02-收尾签收报告.md
+P03,G,P0,S,遥控短帧被当新鲜反馈,verified_software,B02,gimbal-dev,G 遥控 131/131；交叉脚本含 18/36B、非法通道/开关与恢复；设备失联零输出留待 B03/实机；2026-11-15 见 B02-收尾签收报告.md；2026-11-15 B03持续保护与恢复已软件验证，设备验收仍not_run
+P03C,C,P0,S,底盘遥控发布未校验完整帧,verified_software,B02,chassis-dev,B02元数据验证保留；2026-11-15 B03补齐非法帧不覆盖rc_ctrl及纯查询；31项串口和65项最终保护通过；实机not_run；见B03-两步实施与签收报告.md
+P04,C+G,P0,S,持续失联保护及旧 detect 空链,verified_software,B03,chassis-dev+gimbal-dev,2026-11-15 B03两步实施通过：100ms持续健康、新RC恢复、最终输出门、PID/目标清理；全量构建及真实源离线回归通过；实机not_run；见B03-两步实施与签收报告.md
+P05,G,P0,S,自瞄超时与共享 RC 注入,verified_software,B03,gimbal-dev,2026-11-15 B03通过：自瞄2000ms双模式、旧历史清理；主机独立邮箱120ms/单发20ms、本地优先、RC不注入；实机not_run；见B03-两步实施与签收报告.md
+P06,G,P0,H,IMU 温控方向与残留 PWM,pending_hardware,B04,gimbal-dev,计算/输出分离；极性无证据不得激活
+P07,G,P1,S,两个摩擦轮共用 PID 历史,not_done,B04,gimbal-dev,未开始；改前缺陷已固定（两轮共用 PID、wheel2 err=0 仍输出）
+P08,G,P1,S,USB 重复初始化/协议上下文/异步发送寿命,verified_software,B02,gimbal-dev,USB handoff 19/19、TX 23/23；VOFA 边界 1152/1152；修复 busy 前覆盖、超限截断、uint8 长度回绕；实机重连 not_run；2026-11-15 见 B02-收尾签收报告.md
+P09,C+G,P1,S+L,校准入口与方法说明/存储兼容,verified_software,B05,gimbal-dev+chassis-dev,B05值域/真实布局/Flash有界读改写与回读/Pitch保存应用分离；手册按最终实现重写；机械/存储设备验收not_run；2026-11-15见B05-实施与软件签收报告.md；待用户确认后才推进B04/B06/B07
+P10,C+G,P1,S,存在接口数据未贯通,verified_software,B05,chassis-dev+gimbal-dev,B05 UI新鲜/非法未知；HP/电压来源独立续期；主机状态/裁判不伪有效；速度仍不可用占位；2026-11-15见B05-实施与软件签收报告.md；待用户确认后才推进B04/B06/B07
+P11,C,P1,S,工具路径/基线与可重复验证,fixed,B01,lead,projects.json + build.ps1/snapshot.py 预检；见 B01 证据
+P12,G,P1,L,警告与 ABI 风险,verified_software,B05,gimbal-dev,B05 G正式debug与隔离release均0错误0告警；31条逐项消除，GNU+USB布局归一，无屏蔽诊断；2026-11-15见B05-实施与软件签收报告.md；待用户确认后才推进B04/B06/B07
+P13,C+G,P2,S,僵尸/重复/兼容内容,pending,B06,chassis-dev+gimbal-dev,keep/remove/unknown 逐项证据
+P14,C+G,P2,S,参数/命名/编码/文档一致性,pending,B06,chassis-dev+gimbal-dev,GBK→UTF-8 按文件小批验证
+P15,C+G,P2,S,模块边界与实时性可观测,pending,B06,chassis-dev+gimbal-dev,新模块拆分 + 观察入口
+P16,C+G,P2,S, CubeMX/硬件未知/范围外设计,pending,B07,lead,只交设计与待设备清单

@@ -1,0 +1,24 @@
+{
+  "Board": "gimbal",
+  "Target": "CtrlBoard-H7_IMU",
+  "Project": "D:\\文档\\Printk\\bubing\\gimbal\\Infantry_gimbal\\MDK-ARM\\CtrlBoard-H7_IMU.uvprojx",
+  "OutputDirectory": "CtrlBoard-H7_IMU\\",
+  "OutputName": "CtrlBoard-H7_IMU",
+  "Device": "STM32H723VGTx",
+  "Pack": "Keil.STM32H7xx_DFP.4.1.3",
+  "KeilEntryCount": 109,
+  "MissingEntries": [],
+  "DisabledEntries": [],
+  "ExitCode": 1,
+  "Started": "2026-11-15T16:06:49.1974736+08:00",
+  "Seconds": 118.4,
+  "Log": "D:\\文档\\Printk\\bubing\\gimbal\\Infantry_gimbal\\AI_Workspace\\artifacts\\B02-acceptance\\20261114-192801\\build-final\\gimbal.log",
+  "Summary": [
+    "Program Size: Code=114760 RO-data=2132 RW-data=1124 ZI-data=55356  ",
+    "\"CtrlBoard-H7_IMU\\CtrlBoard-H7_IMU.axf\" - 0 Error(s), 31 Warning(s).",
+    "Build Time Elapsed:  00:01:56"
+  ],
+  "Image": "D:\\文档\\Printk\\bubing\\gimbal\\Infantry_gimbal\\MDK-ARM\\CtrlBoard-H7_IMU\\CtrlBoard-H7_IMU.axf",
+  "ImageSHA256": "83892A0CECB4D5D06B94315C46FEC7F31B9F1938FD0EA03435C4E1C847B3D703",
+  "Success": true
+}

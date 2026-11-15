@@ -1,0 +1,13 @@
+{
+  "root": "D:\\文档\\Printk\\bubing\\gimbal\\Infantry_gimbal",
+  "projects": {
+    "gimbal": {
+      "target_count": 1,
+      "keil_entries": 109,
+      "include_directories": 26,
+      "external_paths": [],
+      "missing_paths": []
+    }
+  },
+  "passed": true
+}

@@ -1,3 +1,4 @@
+#include "health.h"
 //#include "bsp_laser.h"
 #include "arm_math.h"
 #include "bsp_PWM.h"
@@ -37,8 +38,39 @@ fp32 continue_trigger_speed = CONTINUE_TRIGGER_SPEED;
   * @param[in]      void
   * @retval         返回can控制值
   */
+void shoot_safety_reset(void)
+{
+    shoot_control.shoot_mode=SHOOT_STOP;
+    PID_clear(&shoot_control.trigger_motor_angle_pid);
+    PID_clear(&shoot_control.trigger_motor_speed_pid);
+    PID_clear(&shoot_control.fric_motor_pid);
+    shoot_control.given_current=0;
+    shoot_control.speed_set=shoot_control.trigger_speed_set=0.0f;
+    shoot_control.fric1.speed_set=shoot_control.fric2.speed_set=0.0f;
+    shoot_control.fric1.give_current=shoot_control.fric2.give_current=0;
+    shoot_control.angle_set=shoot_control.angle;
+    shoot_control.block_time=shoot_control.reverse_time=0U;
+    shoot_control.press_l=shoot_control.last_press_l=shoot_control.press_r=shoot_control.last_press_r=0U;
+    shoot_control.press_l_time=shoot_control.press_r_time=shoot_control.rc_s_time=0U;
+    shoot_control.move_flag=0U;
+    shoot_history_reset();
+}
+
 int16_t shoot_control_loop(void)
 {
+    static uint32_t last_epoch;
+    if (!health_gate_ready(HEALTH_GATE_SHOOT,HEALTH_SHOOT_MASK,HAL_GetTick()))
+    {
+        shoot_safety_reset();
+        CAN_cmd_friction(0,0,0,0);
+        return 0;
+    }
+    if (last_epoch != health_gate_epoch(HEALTH_GATE_SHOOT))
+    {
+        shoot_feedback_update();
+        shoot_safety_reset();
+        last_epoch=health_gate_epoch(HEALTH_GATE_SHOOT);
+    }
 //	/*********************** 模式选择调试 ************************/
 //	//	typedef enum
 //	//	{

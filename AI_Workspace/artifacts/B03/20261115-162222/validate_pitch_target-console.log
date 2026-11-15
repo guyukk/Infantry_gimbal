@@ -1,0 +1,68 @@
+Traceback (most recent call last):
+  File "D:\�ĵ�\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\validate_pitch_target.py", line 271, in <module>
+    run(project_path(args.cache), project_path(args.results))
+  File "D:\�ĵ�\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\validate_pitch_target.py", line 229, in run
+    raise RuntimeError(completed.stdout.decode("gb18030", errors="replace") +
+RuntimeError: "D:\文档\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\b03\20261115-162222\final-validate_pitch_target\pitch-target-check.c", line 70: Warning:  #111-D: statement is unreachable
+
+      return raw - PITCH_DM_ZERO_OFFSET_RAD;
+
+      ^
+
+"D:\文档\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\b03\20261115-162222\final-validate_pitch_target\pitch-target-check.c", line 169: Warning:  #223-D: function "auto_aim_take_increment" declared implicitly
+
+  		bias_angle = auto_aim_take_increment(0U);
+
+  		             ^
+
+"D:\文档\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\b03\20261115-162222\final-validate_pitch_target\pitch-target-check.c", line 177: Warning:  #223-D: function "auto_aim_take_increment" declared implicitly
+
+  		bias_angle = auto_aim_take_increment(1U);
+
+  		             ^
+
+"D:\文档\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\b03\20261115-162222\final-validate_pitch_target\pitch-target-check.c", line 272: Warning:  #223-D: function "gimbal_axis_ready" declared implicitly
+
+      if (gimbal_axis_ready(control_loop,0U))
+
+          ^
+
+"D:\文档\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\b03\20261115-162222\final-validate_pitch_target\pitch-target-check.c", line 320: Warning:  #223-D: function "gimbal_axis_ready" declared implicitly
+
+      if (!gimbal_axis_ready(control_loop,1U)) return;
+
+           ^
+
+"D:\文档\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\b03\20261115-162222\final-validate_pitch_target\pitch-target-check.c", line 384: Warning:  #223-D: function "gimbal_axis_ready" declared implicitly
+
+      if (gimbal_axis_ready(set_control,0U))
+
+          ^
+
+"D:\文档\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\b03\20261115-162222\final-validate_pitch_target\pitch-target-check.c", line 421: Warning:  #223-D: function "health_fresh" declared implicitly
+
+  			if (yaw_fdb == NULL || !health_fresh(HEALTH_YAW,now) ||
+
+  			                        ^
+
+"D:\文档\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\b03\20261115-162222\final-validate_pitch_target\pitch-target-check.c", line 421: Error:  #20: identifier "HEALTH_YAW" is undefined
+
+  			if (yaw_fdb == NULL || !health_fresh(HEALTH_YAW,now) ||
+
+  			                                     ^
+
+"D:\文档\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\b03\20261115-162222\final-validate_pitch_target\pitch-target-check.c", line 445: Warning:  #223-D: function "auto_aim_take_increment" declared implicitly
+
+  			(void)auto_aim_take_increment(0U);
+
+  			      ^
+
+"D:\文档\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\b03\20261115-162222\final-validate_pitch_target\pitch-target-check.c", line 464: Warning:  #223-D: function "gimbal_axis_ready" declared implicitly
+
+      if (!gimbal_axis_ready(set_control,1U)) return;
+
+           ^
+
+D:\�ĵ�\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\b03\20261115-162222\final-validate_pitch_target\pitch-target-check.c: 9 warnings, 1 error
+
+

@@ -1,0 +1,18 @@
+{
+  "G": {
+    "baseline": "D:\\文档\\Printk\\bubing\\gimbal\\Infantry_gimbal\\AI_Workspace\\artifacts\\B02-acceptance\\20261114-192801\\build-final\\gimbal.log",
+    "current": "D:\\文档\\Printk\\bubing\\chassis\\Infantry_chassis\\AI_Workspace\\artifacts\\B03\\20261115-162222\\final\\build-signed\\gimbal.log",
+    "baseline_count": 31,
+    "current_count": 31,
+    "added": {},
+    "removed": {}
+  },
+  "G-release": {
+    "baseline": "D:\\文档\\Printk\\bubing\\gimbal\\Infantry_gimbal\\AI_Workspace\\artifacts\\B02-acceptance\\20261114-192801\\build-final\\gimbal.log",
+    "current": "D:\\文档\\Printk\\bubing\\gimbal\\Infantry_gimbal\\AI_Workspace\\artifacts\\B03\\20261115-162222\\final\\build-release-signed\\gimbal.log",
+    "baseline_count": 31,
+    "current_count": 31,
+    "added": {},
+    "removed": {}
+  }
+}

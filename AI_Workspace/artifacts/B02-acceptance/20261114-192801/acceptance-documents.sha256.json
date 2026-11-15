@@ -1,0 +1,20 @@
+{
+  "zip_sha256": "17988fd55d015d4a23fbb3fa5f81a63001e649f3e779894d1fcc8388b4303be6",
+  "files": {
+    "AI_Workspace/README.md": "131eb2798b8395204f2fe2c722b58444bc73b9e90cc3890b98e26a6aeaf6a245",
+    "AI_Workspace/reports/optimization-2026-11-14/B02-收尾签收报告.md": "4f255e310013326865529af6b735ed6da8f7da5882ca20e64a00ee4007938eb2",
+    "AI_Workspace/reports/optimization-2026-11-14/calibration-gaps.md": "36d1bee21bf0ba1e4c798e531f1f66d67a9119656ea7bf1f4066d7954f1d26f0",
+    "AI_Workspace/reports/optimization-2026-11-14/calibration-manual.md": "7d7e24a87da43c682fa3e160798188c1974979676852e46d0908a759e0907581",
+    "AI_Workspace/reports/optimization-2026-11-14/controls-and-keys.md": "962a382f9c92f0f820cd74ed323aecb8b797a4bf20efd73954178c960f837db8",
+    "AI_Workspace/reports/optimization-2026-11-14/current-config.md": "746807ac34e9c63bb556cf54714c3994a4f7b5f161582998a5f27440b39f563d",
+    "AI_Workspace/reports/optimization-2026-11-14/decision-log.md": "a557e8118ba82fa52ac4e5ba43ac8cf622896e8dccd0500de66c4808a49265b0",
+    "AI_Workspace/reports/optimization-2026-11-14/execution-log.md": "11c513d3a66b8c50ad56ad45e44ed77ddad90e1be2fe309a2265ff5dd75feeeb",
+    "AI_Workspace/reports/optimization-2026-11-14/final-report.md": "a3849329e328651b0c45e03d678689e86ebcd23d704300466a3823ae53074fda",
+    "AI_Workspace/reports/optimization-2026-11-14/hardware-unknowns.md": "f9772dcc2aea2aafebc581c5133fd3d8ff18695a3c5331c6523b19536264176b",
+    "AI_Workspace/reports/optimization-2026-11-14/historical-index.md": "cad1add2732967e7313df130844780aad2d2acbd4c99c454a9388e43f9a59e6b",
+    "AI_Workspace/reports/optimization-2026-11-14/interboard-protocol-consistency.md": "02a482324b8a7c41b6488bb9fc24f4e53df5f3c7715c76f61304be5b0236362a",
+    "AI_Workspace/reports/optimization-2026-11-14/interboard-protocol.md": "eb4ce80fd4f990e87348fc3e75a919ef3e5c4272ed36bb79af7631a6131a933c",
+    "AI_Workspace/reports/optimization-2026-11-14/issues.csv": "5673eaaccc8d8dd3eeee51b30382c228843e3334545b65d1ef1481a3f1396f0b",
+    "AI_Workspace/reports/optimization-2026-11-14/validation-matrix.csv": "595bedbd4a8e85737c9597111d7a2b21c4211c7ff4d854d196cbbb72c4f1f5f7"
+  }
+}

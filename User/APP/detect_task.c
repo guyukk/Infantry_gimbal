@@ -1,3 +1,5 @@
+#include "health.h"
+#include "main.h"
 /**
   ****************************(C) COPYRIGHT 2019 DJI****************************
   * @file       detect_task.c/h
@@ -191,7 +193,17 @@ void detect_task(void const *pvParameters)
   */
 bool_t toe_is_error(uint8_t toe)
 {
-    return (error_list[toe].error_exist == 1);
+    uint8_t source;
+    switch (toe)
+    {
+    case DBUS_TOE: source=HEALTH_RC; break;
+    case YAW_GIMBAL_MOTOR_TOE: source=HEALTH_YAW; break;
+    case PITCH_GIMBAL_MOTOR_TOE: source=HEALTH_PITCH; break;
+    case TRIGGER_MOTOR_TOE: source=HEALTH_TRIGGER; break;
+    case BOARD_GYRO_TOE: case BOARD_ACCEL_TOE: case RM_IMU_TOE: source=HEALTH_IMU; break;
+    default: return 1U; /* Unmapped equipment is unavailable, never healthy by default. */
+    }
+    return !health_fresh(source,HAL_GetTick());
 }
 
 /**

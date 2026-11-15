@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "D:\ÎÄµµ\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\validate_pitch_cold_start.py", line 212, in <module>
+    run(project_path(args.cache), project_path(args.results))
+  File "D:\ÎÄµµ\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\validate_pitch_cold_start.py", line 172, in run
+    raise RuntimeError(completed.stdout.decode("gb18030", errors="replace") +
+RuntimeError: "D:\æ–‡æ¡£\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\B05\20261115-175509\regression\validate_pitch_cold_start\pitch-cold-start-check.c", line 138: Error:  #136: struct "<unnamed>"  has no field "saved_pending"
+      if (!pitch_dm_cali_status.init_done || (pitch_dm_cali_status.stored_valid && !pitch_dm_cali_status.saved_pending) ||
+                                                                                                         ^
+"D:\æ–‡æ¡£\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\B05\20261115-175509\regression\validate_pitch_cold_start\pitch-cold-start-check.c", line 150: Warning:  #223-D: function "pitch_cali_feedback" declared implicitly
+      if (!pitch_cali_feedback(motor) ||
+           ^
+"D:\æ–‡æ¡£\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\B05\20261115-175509\regression\validate_pitch_cold_start\pitch-cold-start-check.c", line 172: Error:  #136: struct "<unnamed>"  has no field "saved_pending"
+      pitch_dm_cali_status.saved_pending = 0U;
+                           ^
+D:\ÎÄµµ\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\B05\20261115-175509\regression\validate_pitch_cold_start\pitch-cold-start-check.c: 1 warning, 2 errors
+

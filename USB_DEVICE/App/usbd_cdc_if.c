@@ -23,7 +23,7 @@
 
 /* USER CODE BEGIN INCLUDE */
 #include "crc8_crc16.h"
-#include "..\\..\\User\\Communication\\core\\uproto.h" 
+#include "usb_cdc_port.h"
 
 /* USER CODE END INCLUDE */
 
@@ -98,12 +98,7 @@ uint8_t UserTxBufferHS[APP_TX_DATA_SIZE];
 
 /* USER CODE BEGIN PRIVATE_VARIABLES */
 
-//usb閹恒儲鏁归弫鎵�?,閸欐�??浣烘畱閸忋劌�?潻娆庣�?
-uint8_t usb_buf[USB_SIZE];
-uint16_t usb_buf_len = 0; // 瑜版挸澧犲鍙夋暪閸掍即鏆辨�??
-static uint8_t  printf_buf[2];   // 1 鐎涙濡弫鐗堝�? + 1 閸楃姳缍?
-static volatile uint8_t tx_done = 1; // 閸欐�??浣哥暚閹存劖鐖ｈ�??
-
+/* USB 原始缓冲与打印缓冲已移除：协议字节流只经 usb_cdc_port 交接 */
 
 /* USER CODE END PRIVATE_VARIABLES */
 
@@ -119,8 +114,6 @@ static volatile uint8_t tx_done = 1; // 閸欐�??浣哥暚閹存劖鐖ｈ�??
 extern USBD_HandleTypeDef hUsbDeviceHS;
 
 /* USER CODE BEGIN EXPORTED_VARIABLES */
-
-extern uproto_context_t proto_ctx;
 
 /* USER CODE END EXPORTED_VARIABLES */
 
@@ -275,14 +268,17 @@ static int8_t CDC_Control_HS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 static int8_t CDC_Receive_HS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 11 */
-  /* Directly feed raw USB bytes to uproto; do not pre-filter/clear Buf */
+
+  /* Directly feed raw USB bytes to the bounded hand-off ring; the comm task
+     parses the protocol. Do not pre-filter/clear Buf. */
   if (Len && *Len) {
-    uproto_on_rx_bytes(&proto_ctx, Buf, *Len);
+    usb_cdc_port_on_rx(Buf, *Len);
   }
   USBD_CDC_SetRxBuffer(&hUsbDeviceHS, &Buf[0]);
   USBD_CDC_ReceivePacket(&hUsbDeviceHS);
   return (USBD_OK);
-  /* USER CODE END 11 */
+
+/* USER CODE END 11 */
 }
 
 /**
@@ -296,13 +292,21 @@ uint8_t CDC_Transmit_HS(uint8_t* Buf, uint16_t Len)
 {
   uint8_t result = USBD_OK;
   /* USER CODE BEGIN 12 */
+
   USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*)hUsbDeviceHS.pClassData;
+  if (Len == 0u || Buf == NULL) {
+    return USBD_FAIL;
+  }
+  if (hcdc == NULL) {
+    return USBD_FAIL;
+  }
   if (hcdc->TxState != 0){
     return USBD_BUSY;
   }
   USBD_CDC_SetTxBuffer(&hUsbDeviceHS, Buf, Len);
   result = USBD_CDC_TransmitPacket(&hUsbDeviceHS);
-  /* USER CODE END 12 */
+
+/* USER CODE END 12 */
   return result;
 }
 
@@ -330,15 +334,6 @@ static int8_t CDC_TransmitCplt_HS(uint8_t *Buf, uint32_t *Len, uint8_t epnum)
 }
 
 /* USER CODE BEGIN PRIVATE_FUNCTIONS_IMPLEMENTATION */
-int __io_putchar(int ch)
-{
-	
-    if (hUsbDeviceHS.dev_state != USBD_STATE_CONFIGURED) return ch; // 閺堫亜姘ㄧ紒顏嗘纯閹恒儰�??
-    printf_buf[0] = (uint8_t)ch;
-    tx_done = 0;
-    CDC_Transmit_HS(&printf_buf[0], 1); // 閹绘劒姘﹂崡鏇炵摟閼??
-    return ch;
-}
 /* USER CODE END PRIVATE_FUNCTIONS_IMPLEMENTATION */
 
 /**
