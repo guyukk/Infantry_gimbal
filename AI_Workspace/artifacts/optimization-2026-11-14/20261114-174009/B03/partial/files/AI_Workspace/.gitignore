@@ -1,9 +1,0 @@
-/snapshots/
-/cache/
-/artifacts/logs/
-__pycache__/
-*.pyc
-*.axf
-*.hex
-*.map
-*.o

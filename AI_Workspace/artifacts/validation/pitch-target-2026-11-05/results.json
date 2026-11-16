@@ -1,7 +1,0 @@
-{
-  "status": "0x600d",
-  "checks": 6,
-  "failure": 0,
-  "passed": true,
-  "scope": "active Pitch mode transition and target limiter with unconfigured feedback"
-}

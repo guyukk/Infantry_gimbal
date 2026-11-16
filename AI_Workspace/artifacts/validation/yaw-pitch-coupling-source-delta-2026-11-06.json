@@ -1,7 +1,0 @@
-{
-  "changed_count": 2,
-  "changed_files": [
-    "User/gimbal/yaw_pitch_direct.c",
-    "User/ROBOT/Infantry_robot.h"
-  ]
-}

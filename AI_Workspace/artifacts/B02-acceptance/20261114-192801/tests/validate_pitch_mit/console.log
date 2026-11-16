@@ -1,8 +1,0 @@
-{
-  "status": "0x600d",
-  "checks": 55,
-  "failure": 0,
-  "first_target": -2.5999999046325684,
-  "passed": true,
-  "scope": "MIT packing and enable gate; measured -2.801 recovery from -2.79 lower limit; inward-only slew, recovery window, stale feedback and normal handoff"
-}

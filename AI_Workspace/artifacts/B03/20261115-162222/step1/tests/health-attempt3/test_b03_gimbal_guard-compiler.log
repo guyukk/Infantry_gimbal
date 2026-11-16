@@ -1,4 +1,0 @@
-
-Error: L6218E: Undefined symbol pvPortMalloc (referred from test_b03_gimbal_guard.o).
-Error: L6218E: Undefined symbol xTaskGetTickCount (referred from test_b03_gimbal_guard.o).
-Finished: 0 information, 0 warning and 2 error messages.

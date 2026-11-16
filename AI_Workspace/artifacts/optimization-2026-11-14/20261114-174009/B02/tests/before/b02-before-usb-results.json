@@ -1,7 +1,0 @@
-{
-  "name": "b02-before-usb",
-  "status": "0x600d",
-  "checks": 3,
-  "failure": 3,
-  "before_passed_acceptance": false
-}

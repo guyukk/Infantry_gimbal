@@ -1,7 +1,0 @@
-{
-  "status": "0x600d",
-  "checks": 10,
-  "failure": 0,
-  "passed": true,
-  "scope": "active Pitch transition, RC channel 3 increment, limiter and EMIT target mapping"
-}

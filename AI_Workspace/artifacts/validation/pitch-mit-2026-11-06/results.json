@@ -1,7 +1,0 @@
-{
-  "status": "0x600d",
-  "checks": 13,
-  "failure": 0,
-  "passed": true,
-  "scope": "actual MIT frame packing, range clamping, fresh feedback gate and target slew"
-}

@@ -1,3 +1,0 @@
-
-Error: L6218E: Undefined symbol HAL_Delay (referred from test_b03_imu.o).
-Finished: 0 information, 0 warning and 1 error messages.

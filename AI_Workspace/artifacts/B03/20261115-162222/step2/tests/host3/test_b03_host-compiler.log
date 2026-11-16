@@ -1,4 +1,0 @@
-"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\b03\20261115-162222\step2-host3\test_b03_host-generated.c", line 20: Error:  #235: variable "proto_ctx" was declared with a never-completed type
-  uproto_context_t proto_ctx;
-                   ^
-D:\文档\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\cache\b03\20261115-162222\step2-host3\test_b03_host-generated.c: 0 warnings, 1 error

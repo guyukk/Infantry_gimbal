@@ -1,7 +1,0 @@
-{
-  "status": "0x600d",
-  "checks": 12,
-  "failure": 0,
-  "passed": true,
-  "scope": "active enable retry, fresh feedback, ID/status compatibility, retry exhaustion"
-}

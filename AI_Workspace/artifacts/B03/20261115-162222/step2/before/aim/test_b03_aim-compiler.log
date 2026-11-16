@@ -1,7 +1,0 @@
-"D:\鏂囨。\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b03_aim.c", line 26: Warning:  #177-D: variable "i"  was declared but never referenced
-   uint32_t i,stamp;
-            ^
-D:\文档\Printk\bubing\gimbal\Infantry_gimbal\AI_Workspace\tools\test_b03_aim.c: 1 warning, 0 errors
-
-Error: L6218E: Undefined symbol Vofa_JustFloat (referred from test_b03_aim.o).
-Finished: 0 information, 0 warning and 1 error messages.
