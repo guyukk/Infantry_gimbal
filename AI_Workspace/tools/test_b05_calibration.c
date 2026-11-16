@@ -1,6 +1,7 @@
 #include <math.h>
 #include <string.h>
 #include "calibrate_task.c"
+#include "pitch_calibration.c"
 #include "health.c"
 volatile struct {uint32_t status,checks,failure;} test_result;
 static uint8_t storage[8192],original_tail[4096-36];

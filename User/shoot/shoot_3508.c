@@ -35,63 +35,25 @@
 #include <stdbool.h>
 
 
-extern dm_measure_t *gimbal_DM2325_measure; //拨弹电机相关，暂时放这
 
 
-//开启1号摩擦轮
+/* Each wheel owns its PID history. Stop/overtemperature clears both outputs. */
 __attribute__((used))void fric1_on(shoot_control_t *shoot)
-{	
-	fp32 out = 0;
-	if( shoot->fric1.shoot_motor_measure == NULL){
-		return;
-	}
-	out = PID_Calc(&shoot->fric_motor_pid, shoot->fric1.speed, shoot->fric1.speed_set);
-	shoot->fric1.give_current = out;
+{
+    if (shoot->fric1.shoot_motor_measure == NULL) {shoot->fric1.give_current=0;return;}
+    shoot->fric1.give_current=(int16_t)PID_Calc(&shoot->fric1.speed_pid,shoot->fric1.speed,shoot->fric1.speed_set);
 }
-
-//开启2号摩擦轮
 __attribute__((used))void fric2_on(shoot_control_t *shoot)
 {
-	fp32 out = 0;
-	if( shoot->fric2.shoot_motor_measure == NULL){
-		return;
-	}
-	out = PID_Calc(&shoot->fric_motor_pid, shoot->fric2.speed, shoot->fric2.speed_set);
-	shoot->fric2.give_current = out;
+    if (shoot->fric2.shoot_motor_measure == NULL) {shoot->fric2.give_current=0;return;}
+    shoot->fric2.give_current=(int16_t)PID_Calc(&shoot->fric2.speed_pid,shoot->fric2.speed,shoot->fric2.speed_set);
 }
-
-//关闭摩擦轮
-__attribute__((used))void fric_off(void){
-	
-	fp32 out = 0.0f;
-
-	if( shoot_control.fric1.shoot_motor_measure == NULL || shoot_control.fric2.shoot_motor_measure == NULL )
-	{
-		return;
-	}
-	
-	//在摩擦轮降速到一定程度后才设置电流值为0，起到斜坡的作用
-	if(shoot_control.fric1.speed < 0.3f )
-	{
-		shoot_control.fric1.give_current = 0;
-		return;
-	}
-	else
-	{
-		out = PID_Calc(&shoot_control.fric_motor_pid, shoot_control.fric1.speed, 0);
-		shoot_control.fric1.give_current = out;
-	}
-	
-	if(shoot_control.fric2.speed < 0.3f )
-	{
-		shoot_control.fric2.give_current = 0;
-		return;
-	}
-	else
-	{
-		out = PID_Calc(&shoot_control.fric_motor_pid, shoot_control.fric2.speed, 0);
-		shoot_control.fric2.give_current = out;
-	}
+__attribute__((used))void fric_off(void)
+{
+    PID_clear(&shoot_control.fric1.speed_pid);
+    PID_clear(&shoot_control.fric2.speed_pid);
+    shoot_control.fric1.give_current=0;
+    shoot_control.fric2.give_current=0;
 }
 
 /* 函数原型声明 */
@@ -122,7 +84,8 @@ __attribute__((used))void shoot_init(void)
 	shoot_control.fric2.shoot_motor_measure = get_fric2_motor_measure_point();
 	//初始化PID
 	PID_init(&shoot_control.trigger_motor_speed_pid, PID_POSITION, trigger_speed_pid, TRIGGER_SPEED_PID_MAX_OUT, TRIGGER_SPEED_PID_MAX_IOUT);
-	PID_init(&shoot_control.fric_motor_pid, PID_POSITION, fric_speed_pid, FRIC_MAX_OUT, FRIC_MAX_IOUT);
+	PID_init(&shoot_control.fric1.speed_pid, PID_POSITION, fric_speed_pid, FRIC_MAX_OUT, FRIC_MAX_IOUT);
+	PID_init(&shoot_control.fric2.speed_pid, PID_POSITION, fric_speed_pid, FRIC_MAX_OUT, FRIC_MAX_IOUT);
 	//更新数据
 	shoot_set_mode();
 	shoot_feedback_update();
@@ -140,7 +103,7 @@ uint16_t press_long_time = PRESS_LONG_TIME;
 fp32 fric_up = FRIC_UP;
 
 /**
-  * @brief          射击状态机设置，遥控器上拨一次开启，再上拨关闭，下拨1次发射1颗，一直处在下，则持续发射，用于3min准备时间清理子弹
+  * @brief          射击状态机：上拨切换就绪/关闭；就绪后离开上档进入连发；鼠标释放可触发定时拨弹
   * @param[in]      void
   * @retval         void
   */
@@ -415,19 +378,19 @@ __attribute__((used))void trigger_motor_turn_back(void)
 }
 
 uint32_t shoot_bullet_start_time;
-uint16_t shoot_duaration = 415;
+uint16_t shoot_duaration = SHOOT_SINGLE_DURATION_MS;
 fp32 trigger_speed = TRIGGER_SPEED;
 
 //fp32 plus_angle = 0.95f;
 
 /**
-  * @brief          射击控制，控制拨弹电机角度，完成一次发射
+  * @brief          拨弹定时控制；不验证角度完成或实际弹丸数量
   * @param[in]      void
   * @retval         void
   */
 __attribute__((used))void shoot_bullet_control(void)
 {
-	//每次拨动1/3PI的角度
+	// Single feed is time based; it does not verify a completed angle or ball count.
 	if (shoot_control.move_flag == 0)
 	{
 		shoot_control.move_flag = 1;

@@ -7,6 +7,7 @@
 #include "detect_task.c"
 #include "gimbal_task.c"
 #include "yaw_pitch_direct.c"
+#include "pitch_dm_control.c"
 #include "shoot.c"
 #include "shoot_3508.c"
 #undef LimitMax
@@ -99,9 +100,20 @@ void test_entry(void){
  }
  healthy();health_reject(HEALTH_RC);
  shoot_control.shoot_rc=&rc_ctrl;shoot_control.given_current=123;shoot_control.fric1.give_current=456;
- shoot_control.trigger_motor_speed_pid.Iout=88;shoot_control.fric_motor_pid.Iout=99;
+ shoot_control.trigger_motor_speed_pid.Iout=88;
+#ifdef SHOOT_FRICTION_PID_SPLIT
+ shoot_control.fric1.speed_pid.Iout=99;shoot_control.fric2.speed_pid.Iout=77;
+#else
+ shoot_control.fric_motor_pid.Iout=99;
+#endif
  check(shoot_control_loop()==0 && shoot_control.given_current==0 && shoot_control.fric1.give_current==0 &&
-  shoot_control.trigger_motor_speed_pid.Iout==0 && shoot_control.fric_motor_pid.Iout==0 && zero(sent_fric),240);
+  shoot_control.trigger_motor_speed_pid.Iout==0 &&
+#ifdef SHOOT_FRICTION_PID_SPLIT
+  shoot_control.fric1.speed_pid.Iout==0 && shoot_control.fric2.speed_pid.Iout==0 &&
+#else
+  shoot_control.fric_motor_pid.Iout==0 &&
+#endif
+  zero(sent_fric),240);
  healthy();gimbal_control.gimbal_yaw_motor.gimbal_motor_absolute_angle_pid.Iout=99;
  health_reject(HEALTH_YAW);send();check(gimbal_control.gimbal_yaw_motor.gimbal_motor_absolute_angle_pid.Iout==0,241);
  /* Final wrappers guard independent callers, not only the high-level task. */

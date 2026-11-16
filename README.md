@@ -1,3 +1,5 @@
+> 2026-11-16 软件优化与设备待验状态见 [B07总核报告](AI_Workspace/reports/optimization-2026-11-14/B07-总核与最终交付报告.md)。
+
 # H723 舵轮步兵云台
 
 本目录独立保存当前云台板的源码、STM32CubeMX 配置和 Keil 工程。固件不从其他项目目录取文件；板间通信按本目录的协议定义实现。Keil 工程入口为 [CtrlBoard-H7_IMU.uvprojx](MDK-ARM/CtrlBoard-H7_IMU.uvprojx)，Target 为 `CtrlBoard-H7_IMU`，使用 ARM Compiler 5.06 update 7。生成器配置为 [CtrlBoard-H7_IMU.ioc](CtrlBoard-H7_IMU.ioc)。
@@ -10,6 +12,6 @@
 
 ## 构建与恢复
 
-在本目录运行 `./AI_Workspace/tools/build.ps1` 全量编译。阶段快照、完整日志、逐条警告、MAP、离线验证和按文件恢复方法见 [AI_Workspace 索引](AI_Workspace/README.md)。当前目录没有 Git 仓库，恢复以本地阶段包为准。
+在本目录运行 `./AI_Workspace/tools/build.ps1` 全量编译。阶段快照、完整日志、逐条警告、MAP、离线验证和按文件恢复方法见 [AI_Workspace 索引](AI_Workspace/README.md)。当前目录为独立 Git 仓库；Git 与本地阶段包共同提供恢复依据，未提交内容以阶段包原始字节为准。
 
 最近一次独立项目整理的编译和对照结果见 [阶段报告](AI_Workspace/reports/独立项目收敛-2026-11-02.md)。编译与离线模拟不等于设备验收；尚未烧录或操作实体设备。

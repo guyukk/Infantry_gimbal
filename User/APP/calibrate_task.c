@@ -1,3 +1,4 @@
+#include "pitch_calibration.h"
 /* Current H723 calibration; see calibration-manual.md for supported entries and ABI. */
 #include "calibrate_task.h"
 #include "string.h"
@@ -20,107 +21,14 @@
 #include "health.h"
 
 
-//include head,gimbal,gyro,accel,mag. gyro,accel and mag have the same data struct. total 5(CALI_LIST_LENGHT) devices, need data lenght + 5 * 4 bytes(name[3]+cali)
-#define FLASH_WRITE_BUF_LENGHT 4096U /* preserve the whole legacy sector, including reserved bytes */
-
-
-
-
-/**
-  * @brief          use remote control to begin a calibrate,such as gyro, gimbal, chassis
-  * @param[in]      none
-  * @retval         none
-  */
-/**
-  * @brief          使用遥控器开始校准，例如陀螺仪，云台，底盘
-  * @param[in]      none
-  * @retval         none
-  */
+/* Legacy HD/GM sector owner. Pitch requests and its separate record live in
+ * pitch_calibration.c; old gyro/accel/mag interactive hooks are not registered. */
+#define FLASH_WRITE_BUF_LENGHT 4096U
 static void RC_cmd_to_calibrate(void);
-
-/**
-  * @brief          read cali data from flash
-  * @param[in]      none
-  * @retval         none
-  */
-/**
-  * @brief          从flash读取校准数据
-  * @param[in]      none
-  * @retval         none
-  */
 static void cali_data_read(void);
-
-/**
-  * @brief          write the data to flash
-  * @param[in]      none
-  * @retval         none
-  */
-/**
-  * @brief          往flash写入校准数据
-  * @param[in]      none
-  * @retval         none
-  */
 static int8_t cali_data_write(void);
-
-
-/**
-  * @brief          "head" sensor cali function
-  * @param[in][out] cali:the point to head data. when cmd == CALI_FUNC_CMD_INIT, param is [in],cmd == CALI_FUNC_CMD_ON, param is [out]
-  * @param[in]      cmd: 
-                    CALI_FUNC_CMD_INIT: means to use cali data to initialize original data
-                    CALI_FUNC_CMD_ON: means need to calibrate
-  * @retval         0:means cali task has not been done
-                    1:means cali task has been done
-  */
-/**
-  * @brief          "head"设备校准
-  * @param[in][out] cali:指针指向head数据,当cmd为CALI_FUNC_CMD_INIT, 参数是输入,CALI_FUNC_CMD_ON,参数是输出
-  * @param[in]      cmd: 
-                    CALI_FUNC_CMD_INIT: 代表用校准数据初始化原始数据
-                    CALI_FUNC_CMD_ON: 代表需要校准
-  * @retval         0:校准任务还没有完
-                    1:校准任务已经完成
-  */
-static bool_t cali_head_hook(uint32_t *cali, bool_t cmd);   //header device cali function
-
-/**
-  * @brief          gyro cali function
-  * @param[in][out] cali:the point to gyro data, when cmd == CALI_FUNC_CMD_INIT, param is [in],cmd == CALI_FUNC_CMD_ON, param is [out]
-  * @param[in]      cmd: 
-                    CALI_FUNC_CMD_INIT: means to use cali data to initialize original data
-                    CALI_FUNC_CMD_ON: means need to calibrate
-  * @retval         0:means cali task has not been done
-                    1:means cali task has been done
-  */
-/**
-  * @brief          陀螺仪设备校准
-  * @param[in][out] cali:指针指向陀螺仪数据,当cmd为CALI_FUNC_CMD_INIT, 参数是输入,CALI_FUNC_CMD_ON,参数是输出
-  * @param[in]      cmd: 
-                    CALI_FUNC_CMD_INIT: 代表用校准数据初始化原始数据
-                    CALI_FUNC_CMD_ON: 代表需要校准
-  * @retval         0:校准任务还没有完
-                    1:校准任务已经完成
-  */
-
-/**
-  * @brief          gimbal cali function
-  * @param[in][out] cali:the point to gimbal data, when cmd == CALI_FUNC_CMD_INIT, param is [in],cmd == CALI_FUNC_CMD_ON, param is [out]
-  * @param[in]      cmd: 
-                    CALI_FUNC_CMD_INIT: means to use cali data to initialize original data
-                    CALI_FUNC_CMD_ON: means need to calibrate
-  * @retval         0:means cali task has not been done
-                    1:means cali task has been done
-  */
-/**
-  * @brief          云台设备校准
-  * @param[in][out] cali:指针指向云台数据,当cmd为CALI_FUNC_CMD_INIT, 参数是输入,CALI_FUNC_CMD_ON,参数是输出
-  * @param[in]      cmd: 
-                    CALI_FUNC_CMD_INIT: 代表用校准数据初始化原始数据
-                    CALI_FUNC_CMD_ON: 代表需要校准
-  * @retval         0:校准任务还没有完
-                    1:校准任务已经完成
-  */
-static bool_t cali_gimbal_hook(uint32_t *cali, bool_t cmd); //gimbal device cali function
+static bool_t cali_head_hook(uint32_t *cali,bool_t cmd);
+static bool_t cali_gimbal_hook(uint32_t *cali,bool_t cmd);
 
 
 
@@ -133,7 +41,6 @@ static const RC_ctrl_t *calibrate_RC;   //remote control point
 static head_cali_t     head_cali;       //head cali data
 static gimbal_cali_t   gimbal_cali;     //gimbal cali data
 static uint8_t calibration_flash_ready;
-static uint8_t pitch_dm_flash_ready;
 //static imu_cali_t      accel_cali;      //accel cali data
 //static imu_cali_t      gyro_cali;       //gyro cali data
 //static imu_cali_t      mag_cali;        //mag cali data
@@ -162,22 +69,6 @@ void *cali_hook_fun[CALI_LIST_LENGHT] = {cali_head_hook, cali_gimbal_hook};
 
 static uint32_t calibrate_systemTick;
 
-// Separate 4 KB W25Q sector. The legacy HD/GM record at sector 0 is unchanged.
-#define PITCH_DM_CALI_ADDR 0x1000UL
-#define PITCH_DM_CALI_MAGIC 0x50444D31UL
-#define PITCH_DM_CALI_VERSION 1UL
-#define PITCH_DM_CALI_RETRY_MS 1000U
-typedef struct
-{
-    uint32_t magic;
-    uint32_t version;
-    float min_pos;
-    float max_pos;
-    uint32_t check;
-} pitch_dm_cali_record_t;
-
-typedef char pitch_record_size_check[(sizeof(pitch_dm_cali_record_t)==20) ? 1:-1];
-typedef char pitch_record_fields_check[(offsetof(pitch_dm_cali_record_t,min_pos)==8 && offsetof(pitch_dm_cali_record_t,max_pos)==12 && offsetof(pitch_dm_cali_record_t,check)==16) ? 1:-1];
 static uint8_t legacy_record_valid(uint8_t id)
 {
     if(id==CALI_HEAD) return isfinite(head_cali.latitude) && head_cali.latitude>=-90.0f && head_cali.latitude<=90.0f;
@@ -185,197 +76,6 @@ static uint8_t legacy_record_valid(uint8_t id)
     return gimbal_cali.yaw_offset<8192U && isfinite(gimbal_cali.yaw_min_angle) &&
         isfinite(gimbal_cali.yaw_max_angle) && gimbal_cali.yaw_min_angle>=-PI &&
         gimbal_cali.yaw_max_angle<=PI && gimbal_cali.yaw_min_angle<gimbal_cali.yaw_max_angle;
-}
-static uint8_t pitch_cali_feedback(dm_measure_t *out)
-{
-    dm_measure_t *source=get_dm_motor_measure_point(PITCH_DM_MOTOR_INDEX);
-    uint8_t ready;
-    if(source==NULL) return 0U;
-    taskENTER_CRITICAL();
-    *out=*source;
-    ready=health_fresh(HEALTH_PITCH,HAL_GetTick());
-    taskEXIT_CRITICAL();
-    return ready && isfinite(out->fdb.pos) && isfinite(out->fdb.vel) &&
-        (out->fdb.state==1U || (PITCH_DM_CAN_ID==0x53U && out->fdb.id==3U && out->fdb.state==5U));
-}
-volatile pitch_dm_cali_status_t pitch_dm_cali_status;
-
-static uint32_t pitch_dm_cali_check(const pitch_dm_cali_record_t *record)
-{
-    const uint8_t *bytes = (const uint8_t *)record;
-    uint32_t crc = 0xFFFFFFFFUL;
-    uint32_t i;
-    uint8_t bit;
-    for (i = 0; i < sizeof(*record) - sizeof(record->check); i++)
-    {
-        crc ^= bytes[i];
-        for (bit = 0; bit < 8U; bit++)
-            crc = (crc >> 1) ^ ((crc & 1U) ? 0xEDB88320UL : 0U);
-    }
-    return ~crc;
-}
-
-static uint8_t pitch_dm_cali_valid_range(float min_pos, float max_pos)
-{
-    float span = max_pos - min_pos;
-    return isfinite(min_pos) && isfinite(max_pos) &&
-           min_pos > -PITCH_MIT_P_MAX && max_pos < PITCH_MIT_P_MAX &&
-           span >= 0.1f && span <= 1.5f;
-}
-
-static uint8_t pitch_dm_cali_read_record(pitch_dm_cali_record_t *record)
-{
-    if (!pitch_dm_flash_ready)
-    {
-        pitch_dm_flash_ready = (flash_init() == 0);
-    }
-    if (!pitch_dm_flash_ready) return 0U;
-    if (flash_read(PITCH_DM_CALI_ADDR, (uint32_t *)record, sizeof(*record) / 4U) != 0)
-    {
-        pitch_dm_flash_ready = 0U;
-        return 0U;
-    }
-    return record->magic == PITCH_DM_CALI_MAGIC &&
-           record->version == PITCH_DM_CALI_VERSION &&
-           record->check == pitch_dm_cali_check(record) &&
-           pitch_dm_cali_valid_range(record->min_pos, record->max_pos);
-}
-
-void pitch_dm_cali_load(float *min_pos, float *max_pos)
-{
-    pitch_dm_cali_record_t record;
-    if (min_pos == NULL || max_pos == NULL || !pitch_dm_cali_read_record(&record)) return;
-    *min_pos = record.min_pos;
-    *max_pos = record.max_pos;
-    pitch_dm_cali_status.min_pos = record.min_pos;
-    pitch_dm_cali_status.max_pos = record.max_pos;
-    pitch_dm_cali_status.stored_valid = 1U;
-}
-
-static void pitch_dm_cali_recover(void)
-{
-    static uint32_t last_retry_tick;
-    pitch_dm_cali_record_t record;
-    dm_measure_t sample;
-    dm_measure_t *motor=&sample;
-    uint32_t now = HAL_GetTick();
-
-    if (!pitch_dm_cali_status.init_done || (pitch_dm_cali_status.stored_valid && !pitch_dm_cali_status.saved_pending) ||
-        pitch_dm_cali_status.request != 0U || pitch_dm_cali_status.captured != 0U ||
-        (uint32_t)(now - last_retry_tick) < PITCH_DM_CALI_RETRY_MS) return;
-    last_retry_tick = now;
-    if (!pitch_dm_cali_read_record(&record)) return;
-
-    if (!pitch_cali_feedback(motor) ||
-        motor->fdb.pos < record.min_pos - PITCH_DM_LOWER_RECOVERY_RAD ||
-        motor->fdb.pos > record.max_pos) return;
-
-    // Publish limits and the current target together; the gimbal task must not
-    // see stored_valid before its position limits have been updated.
-    taskENTER_CRITICAL();
-    pitch_dm_apply_calibration(&gimbal_control, record.min_pos, record.max_pos,
-                               motor->fdb.pos);
-    pitch_dm_cali_status.min_pos = record.min_pos;
-    pitch_dm_cali_status.max_pos = record.max_pos;
-    pitch_dm_cali_status.stored_valid = 1U;
-    if (pitch_dm_cali_status.saved_pending) pitch_dm_cali_status.result=2;
-    pitch_dm_cali_status.saved_pending = 0U;
-    taskEXIT_CRITICAL();
-}
-
-static void pitch_dm_cali_poll(void)
-{
-    uint8_t request = pitch_dm_cali_status.request;
-    dm_measure_t sample;
-    dm_measure_t *motor=&sample;
-    float min_pos, max_pos;
-    pitch_dm_cali_record_t record;
-    pitch_dm_cali_record_t readback;
-    if (request == 0U) return;
-    pitch_dm_cali_status.request = 0U;
-    if (request == 4U)
-    {
-        pitch_dm_cali_status.captured = 0U;
-        pitch_dm_cali_status.result = 0;
-        return;
-    }
-    if (!pitch_cali_feedback(motor))
-    {
-        pitch_dm_cali_status.result = -1; // stale or unusable feedback
-        return;
-    }
-    if (request == 1U || request == 2U)
-    {
-        if (!isfinite(motor->fdb.pos) || !isfinite(motor->fdb.vel) ||
-            fabsf(motor->fdb.vel) > 0.2f)
-        {
-            pitch_dm_cali_status.result = -2; // moving or invalid position
-            return;
-        }
-        if (request == 1U)
-        {
-            pitch_dm_cali_status.first_pos = motor->fdb.pos;
-            pitch_dm_cali_status.captured |= 1U;
-        }
-        else
-        {
-            pitch_dm_cali_status.second_pos = motor->fdb.pos;
-            pitch_dm_cali_status.captured |= 2U;
-        }
-        pitch_dm_cali_status.result = 1;
-        return;
-    }
-    if (request != 3U || pitch_dm_cali_status.captured != 3U)
-    {
-        pitch_dm_cali_status.result = -3; // two samples required
-        return;
-    }
-    min_pos = fminf(pitch_dm_cali_status.first_pos, pitch_dm_cali_status.second_pos);
-    max_pos = fmaxf(pitch_dm_cali_status.first_pos, pitch_dm_cali_status.second_pos);
-    if (!isfinite(motor->fdb.pos) || !isfinite(motor->fdb.vel) || fabsf(motor->fdb.vel)>0.2f ||
-        !pitch_dm_cali_valid_range(min_pos, max_pos) ||
-        motor->fdb.pos < min_pos || motor->fdb.pos > max_pos)
-    {
-        pitch_dm_cali_status.result = -4; // unsafe range or current position outside it
-        return;
-    }
-    if (!pitch_dm_flash_ready) pitch_dm_flash_ready = (flash_init() == 0);
-    if (!pitch_dm_flash_ready) { pitch_dm_cali_status.result = -5; return; }
-    record.magic = PITCH_DM_CALI_MAGIC;
-    record.version = PITCH_DM_CALI_VERSION;
-    record.min_pos = min_pos;
-    record.max_pos = max_pos;
-    record.check = pitch_dm_cali_check(&record);
-    if (flash_write_single_address(PITCH_DM_CALI_ADDR, (uint32_t *)&record,
-                                   sizeof(record) / 4U) != 0)
-    {
-        pitch_dm_cali_status.result = -5; // flash write failed
-        return;
-    }
-    if (flash_read(PITCH_DM_CALI_ADDR, (uint32_t *)&readback, sizeof(readback) / 4U) != 0 ||
-        memcmp(&readback, &record, sizeof(record)) != 0)
-    {
-        pitch_dm_cali_status.result = -5;
-        return;
-    }
-    /* Flash may block long enough for feedback to expire or the mechanism to move. */
-    if (!pitch_cali_feedback(motor) || fabsf(motor->fdb.vel)>0.2f ||
-        motor->fdb.pos<min_pos || motor->fdb.pos>max_pos)
-    {
-        pitch_dm_cali_status.saved_pending=1U;
-        pitch_dm_cali_status.captured=0U;
-        pitch_dm_cali_status.result=-6; /* persisted, not yet applied; old runtime limits stay */
-        return;
-    }
-    taskENTER_CRITICAL();
-    pitch_dm_apply_calibration(&gimbal_control, min_pos, max_pos, motor->fdb.pos);
-    pitch_dm_cali_status.min_pos = min_pos;
-    pitch_dm_cali_status.max_pos = max_pos;
-    pitch_dm_cali_status.stored_valid = 1U;
-    pitch_dm_cali_status.saved_pending = 0U;
-    taskEXIT_CRITICAL();
-    pitch_dm_cali_status.captured = 0U;
-    pitch_dm_cali_status.result = 2;
 }
 
 
@@ -603,7 +303,7 @@ void cali_param_init(void)
     }
 
     calibration_flash_ready = (flash_init() == 0);
-    pitch_dm_flash_ready = calibration_flash_ready;
+    pitch_dm_calibration_set_flash_ready(calibration_flash_ready);
     if (calibration_flash_ready)
     {
         cali_data_read();

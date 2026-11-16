@@ -20,7 +20,7 @@ from unicorn.arm_const import UC_ARM_REG_SP
 
 
 def harness_source():
-    gimbal = functions(read_source(ROOT / "User/gimbal/yaw_pitch_direct.c"))
+    gimbal = functions(read_source(ROOT / "User/gimbal/yaw_pitch_direct.c") + "\n" + read_source(ROOT / "User/gimbal/pitch_dm_control.c"))
     config = read_source(ROOT / "User/ROBOT/Infantry_robot.h")
     names = ("PITCH_DM_ENABLE_FIRST_RETRY_MS", "PITCH_DM_ENABLE_RETRY_MS",
              "PITCH_DM_ENABLE_MAX_ATTEMPTS", "PITCH_MIT_FEEDBACK_TIMEOUT_MS")

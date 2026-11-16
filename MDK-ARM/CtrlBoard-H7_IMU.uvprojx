@@ -935,6 +935,11 @@
               <FilePath>..\User\APP\calibrate_task.c</FilePath>
             </File>
             <File>
+              <FileName>pitch_calibration.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\APP\pitch_calibration.c</FilePath>
+            </File>
+            <File>
               <FileName>detect_task.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\User\APP\detect_task.c</FilePath>
@@ -1013,6 +1018,11 @@
               <FileName>yaw_pitch_direct.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\User\gimbal\yaw_pitch_direct.c</FilePath>
+            </File>
+            <File>
+              <FileName>pitch_dm_control.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\gimbal\pitch_dm_control.c</FilePath>
             </File>
           </Files>
         </Group>

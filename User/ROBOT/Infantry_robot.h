@@ -91,7 +91,7 @@
 
 /* ================= 云台参数 ================= */
 #define YAW_SPEED_PID_KP              			4800.0f
-#define YAW_SPEED_PID_KI              			20.0f
+#define YAW_SPEED_PID_KI              			0.0f
 #define YAW_SPEED_PID_KD              			0.0f
 #define YAW_SPEED_PID_MAX_OUT         			30000.0f
 #define YAW_SPEED_PID_MAX_IOUT        			8000.0f
@@ -231,7 +231,7 @@
 #define AA_D_LPF_ALPHA     (0.4f)
 
 //最大转动速度
-#define AA_OMEGA_MAX_YAW   (180.0f * PI / 180.0f)         // 18 deg/s
+#define AA_OMEGA_MAX_YAW   (180.0f * PI / 180.0f)         // 180 deg/s
 #define AA_OMEGA_MAX_PITCH (180.0f * PI / 180.0f)
 
 #define AA_A_MAX_YAW       (720.0f * PI / 180.0f)         // 720 deg/s^2
@@ -261,5 +261,9 @@
 #define DAMN_CALORIES									10
 
 #define POWER_LIMIT         90.0f
+
+/* Effective runtime values, centralized without retuning. */
+#define SHOOT_SINGLE_DURATION_MS 415U
+#define FRIC_OVER_TEMP_C 80U
 
 #endif

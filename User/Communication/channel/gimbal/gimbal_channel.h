@@ -246,22 +246,6 @@ bool gimbal_channel_publish_tfmini(gimbal_channel_t *gc, const gimbal_tfmini_t *
   */
 bool gimbal_channel_publish_referee(gimbal_channel_t *gc, const gimbal_referee_t *data);
 
-/**
-  * @brief                    设置最新的云台控制命令（来自主机）
-  * @param[in] cmd            云台控制命令指针
-  * @retval                   none
-  * @note                     线程安全，适用于Cortex-M单写多读场景
-  */
-void gimbal_mailbox_set(const gimbal_cmd_t *cmd);
-
-/**
-  * @brief                    读取最新的云台控制命令
-  * @param[out] out           输出命令缓冲区
-  * @param[in,out] io_version 输入当前版本号，输出新命令版本号
-  * @retval                   true=有新命令，false=无新命令或参数无效
-  */
-bool gimbal_mailbox_get(gimbal_cmd_t *out, uint32_t *io_version);
-
 #ifdef __cplusplus
 }
 #endif

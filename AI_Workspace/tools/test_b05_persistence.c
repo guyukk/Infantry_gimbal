@@ -1,6 +1,7 @@
 #include <math.h>
 #include <string.h>
 #include "calibrate_task.c"
+#include "pitch_calibration.c"
 #include "health.c"
 #include "bsp_flash.c"
 #include "w25q64.h"

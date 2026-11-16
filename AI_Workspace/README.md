@@ -1,3 +1,5 @@
+> 2026-11-16：已按用户授权推进B04/B06/B07；最新交付见[总核报告](reports/optimization-2026-11-14/B07-总核与最终交付报告.md)、[维护索引](reports/optimization-2026-11-14/B06-维护边界与参数索引.md)与[设备待验/后续设计](reports/optimization-2026-11-14/B07-后续设计与设备待验.md)。温控极性、实车小陀螺及设备验收仍未关闭。下方带日期条目保留历史进度。
+
 > 2026-11-15 B05软件交付完成、等待用户确认；见[B05报告](reports/optimization-2026-11-14/B05-实施与软件签收报告.md)和[最终校准手册](reports/optimization-2026-11-14/calibration-manual.md)。B04/B06/B07未开始，设备验收未完成。
 
 > 2026-11-15 B03 两步软件签收完成，实机未验收。见 [B03签收报告](reports/optimization-2026-11-14/B03-两步实施与签收报告.md)。

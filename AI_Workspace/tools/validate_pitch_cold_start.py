@@ -18,7 +18,7 @@ from unicorn.arm_const import UC_ARM_REG_SP
 
 
 def harness_source():
-    cali = functions(read_source(ROOT / "User/APP/calibrate_task.c"))
+    cali = functions(read_source(ROOT / "User/APP/calibrate_task.c") + "\n" + read_source(ROOT / "User/APP/pitch_calibration.c"))
     config = read_source(ROOT / "User/ROBOT/Infantry_robot.h")
     match = re.search(r"^\s*#define\s+PITCH_DM_LOWER_RECOVERY_RAD\s+(\S+)", config, re.MULTILINE)
     if not match:

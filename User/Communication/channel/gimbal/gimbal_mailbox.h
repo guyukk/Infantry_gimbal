@@ -1,5 +1,5 @@
 /* Compatibility header: legacy projects include gimbal_mailbox.h.
- * The mailbox APIs are declared in gimbal_channel.h in this repo. */
+ * The former unread mailbox is removed; DELTA uses auto_aim publication. */
 #pragma once
 #include "gimbal_channel.h"
 

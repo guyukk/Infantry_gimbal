@@ -97,7 +97,7 @@ static uint64_t sync_now_us(void *user) {
 
 /* forward decls for gimbal channel hooks */
 static bool gimbal_get_state(gimbal_state_t *out, void *user);
-static void gimbal_on_delta(const gimbal_delta_t *d, void *user);
+
 static void gimbal_on_fire(const gimbal_fire_cmd_t *cmd, void *user);
 static void gimbal_on_chassis(const gimbal_chassis_cmd_t *cmd, void *user);
 static void gimbal_on_referee_query(void *user);
@@ -160,7 +160,7 @@ static void setup_channels(void) {
     /* gimbal channel (config-first) */
     gimbal_source_ops_t gsrc = {.get_state = gimbal_get_state, .user = NULL, .period_ms = GIMBAL_PUB_PERIOD_MS};
     gimbal_hooks_t ghk = {
-      .on_delta = gimbal_on_delta,
+      .on_delta = NULL,
       .on_fire = gimbal_on_fire,
       .on_chassis = gimbal_on_chassis,
       .on_referee_query = gimbal_on_referee_query,
@@ -328,24 +328,8 @@ gimbal_state_t value;
     value.ts_us=sync_now_us(NULL);*out=value;return true;
 }
 
-/**
- * @brief          云台增量命令回调（主机 → 设备）
- * @param[in]      d：增量命令
- * @param[in]      user：用户上下文（未使用）
- * @details        将最新命令写入邮箱，供云台控制任务消费
- */
-static void gimbal_on_delta(const gimbal_delta_t *d, void *user) {
-    (void)user;
-    if(!d)
-        return;
-    gimbal_cmd_t cmd;
-    cmd.delta_yaw_udeg = d->delta_yaw_udeg;
-    cmd.delta_pitch_udeg = d->delta_pitch_udeg;
-    cmd.status = d->status;
-    cmd.ts_us = d->ts_us;
-    cmd.version = 0;
-    gimbal_mailbox_set(&cmd);
-}
+/* DELTA is published directly by the channel into auto_aim; no second mailbox. */
+
 
 static void gimbal_on_fire(const gimbal_fire_cmd_t *cmd, void *user)
 {

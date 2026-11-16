@@ -1,3 +1,5 @@
+#include "control_loop_diag.h"
+control_loop_diag_t control_loop_diag;
 #include "health.h"
 /**
   ****************************(C) COPYRIGHT 2019 DJI****************************
@@ -116,6 +118,7 @@ void gimbal_task(void const *pvParameters)
 
 	while (1)
 	{
+        control_loop_diag_begin(&control_loop_diag,HAL_GetTick(),GIMBAL_CONTROL_TIME);
         if (!rc_ctrl_snapshot(&control_rc,NULL)) health_reject(HEALTH_RC);
         gimbal_control.gimbal_rc_ctrl=&control_rc;
         shoot_control.shoot_rc=&control_rc;
@@ -133,6 +136,7 @@ void gimbal_task(void const *pvParameters)
 			J_scope_gimbal_test();
 		#endif
 
+        control_loop_diag_end(&control_loop_diag,HAL_GetTick(),GIMBAL_CONTROL_TIME);
 		vTaskDelay(GIMBAL_CONTROL_TIME);
 
 		#if INCLUDE_uxTaskGetStackHighWaterMark

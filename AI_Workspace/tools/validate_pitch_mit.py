@@ -22,7 +22,7 @@ from unicorn.arm_const import UC_ARM_REG_SP
 
 def harness_source():
     can = functions(read_source(ROOT / "User/Bsp/can_bsp.c"))
-    gimbal = functions(read_source(ROOT / "User/gimbal/yaw_pitch_direct.c"))
+    gimbal = functions(read_source(ROOT / "User/gimbal/yaw_pitch_direct.c") + "\n" + read_source(ROOT / "User/gimbal/pitch_dm_control.c"))
     config = read_source(ROOT / "User/ROBOT/Infantry_robot.h")
     names = ("PITCH_MIT_MAX_POS_STEP_RAD", "PITCH_DM_LOWER_RECOVERY_RAD",
              "PITCH_DM_RECOVERY_POS_STEP_RAD")

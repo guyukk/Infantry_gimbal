@@ -231,11 +231,8 @@ static inline float aa_clamp(float v, float lo, float hi)
 static void auto_aim_control_tick_internal(auto_aim_t *aim_loop);
 
 
-// Legacy example function (kept for compatibility, currently unused in main loop)
-void auto_aim_loop(auto_aim_t* aim_loop)
-{
-    (void)aim_loop;
-}
+// Active control is implemented by auto_aim_control_tick_internal.
+
 
 void auto_aim_init(auto_aim_t *aim_init)
 {

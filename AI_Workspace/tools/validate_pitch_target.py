@@ -20,7 +20,7 @@ from unicorn.arm_const import UC_ARM_REG_SP
 
 
 def harness_source():
-    transition = functions(read_source(ROOT / "User/gimbal/yaw_pitch_direct.c"))[
+    transition = functions(read_source(ROOT / "User/gimbal/yaw_pitch_direct.c") + "\n" + read_source(ROOT / "User/gimbal/pitch_dm_control.c"))[
         "gimbal_mode_change_control_transit"]
     limiter = functions(read_source(ROOT / "User/APP/gimbal_task.c"))[
         "gimbal_relative_angle_limit"]
@@ -28,11 +28,11 @@ def harness_source():
         "gimbal_relative_angle_control"]
     init_control = functions(read_source(ROOT / "User/APP/gimbal_behaviour.c"))[
         "gimbal_init_control"]
-    control_loop = functions(read_source(ROOT / "User/gimbal/yaw_pitch_direct.c"))[
+    control_loop = functions(read_source(ROOT / "User/gimbal/yaw_pitch_direct.c") + "\n" + read_source(ROOT / "User/gimbal/pitch_dm_control.c"))[
         "gimbal_control_loop"]
-    set_control = functions(read_source(ROOT / "User/gimbal/yaw_pitch_direct.c"))[
+    set_control = functions(read_source(ROOT / "User/gimbal/yaw_pitch_direct.c") + "\n" + read_source(ROOT / "User/gimbal/pitch_dm_control.c"))[
         "gimbal_set_control"]
-    raw_to_relative = functions(read_source(ROOT / "User/gimbal/yaw_pitch_direct.c"))[
+    raw_to_relative = functions(read_source(ROOT / "User/gimbal/yaw_pitch_direct.c") + "\n" + read_source(ROOT / "User/gimbal/pitch_dm_control.c"))[
         "pitch_dm_raw_to_relative"]
     config = read_source(ROOT / "User/ROBOT/Infantry_robot.h")
     config_names = ("YAW_CHANNEL", "PITCH_CHANNEL", "RC_DEADBAND", "YAW_RC_SEN",

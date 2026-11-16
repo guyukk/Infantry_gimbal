@@ -1,3 +1,23 @@
+> 2026-11-16：B04/B06软件阶段完成，B07总核与交付见[B07最终报告](B07-总核与最终交付报告.md)。P06温控仅交隔离候选，极性仍待设备确认；小陀螺平移未修复，整车设备验收未完成。
+
+## 2026-11-16 当前配置增补
+
+| 项目 | 底盘C | 云台G |
+| --- | --- | --- |
+| 工程/Target | MDK-ARM/standard_tpye_c.uvprojx / standard_tpye_c | MDK-ARM/CtrlBoard-H7_IMU.uvprojx / CtrlBoard-H7_IMU |
+| MCU/DFP | STM32F407IGHx / F4 DFP3.1.1 | STM32H723VGTx / H7 DFP4.1.3 |
+| 编译器/正式源输入 | ARMCC5.06u7 build960 / 116 | ARMCC5.06u7 build960 / 113 |
+| RTOS tick/堆 | 1000Hz / 24576字节 | 1000Hz / 30720字节 |
+| 控制任务 | chassis High/栈参数1024；1ms DelayUntil | gimbal High/栈参数1024；1ms Delay |
+| 其他任务 | message/INS/LED/referee/servo/UI | default/cali/auto_aim/COMM_APP/message/INS |
+| 输入/电机 | USART3 RC，USART1板间；CAN1驱动201..204、CAN2转向205..208 | UART5 RC，USART1板间；FDCAN2 Yaw205/拨弹207/DM53，FDCAN1摩擦201/202 |
+| 当前默认 | F407舵轮；软转向和现车零偏保留 | Infantry/yaw_pitch_direct/friction_3508/gimbal_board；ROBOT_MODE默认0 |
+| 存储/协议 | sector9旧布局，28B发送/46B接收 | NOR sector0旧HD/GM、0x1000 Pitch v1，46B发送/28B接收 |
+
+完整参数及消费者见[B06索引](B06-维护边界与参数索引.md)。112/111等旧条目数属于历史阶段；最新构建和固件身份以B07报告为准。HSE_VALUE为C12MHz/G24MHz的软件配置，不代替实物晶振测量。
+
+---
+
 # B05当前配置与原始提取索引
 
 更新2026-11-15：C有效源116，G111；Target/MCU/DFP/宏值、时钟、外设、任务创建配置与控制参数保持B03。两端health.c已编入，G另编入host_control.c；正式debug=0，release=1仅隔离验证。

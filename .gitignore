@@ -1,15 +1,55 @@
+# Local evidence, recovery bundles and reproducible work files.
+# Reports and tool sources remain versioned. Existing tracked files stay tracked.
+/AI_Workspace/artifacts/
 /AI_Workspace/snapshots/
 /AI_Workspace/cache/
-/AI_Workspace/artifacts/logs/
+
+# Actual Keil target output and the host communication example's CMake build.
 /MDK-ARM/CtrlBoard-H7_IMU/
 /User/Communication/example/host/build/
-/.vscode/
-*.uvguix.*
-*.uvoptx
+
+# Compiler/linker intermediates and firmware outputs outside those directories.
+*.o
+*.obj
+*.d
+*.dep
+*.crf
+*.lst
+*.lnp
+*.__i
 *.axf
+*.elf
 *.hex
 *.map
-*.o
-*.crf
-*.d
-*.lst
+*.hsc
+
+# Keep project/source configuration: .uvprojx, .ioc, RTE, .sct, .ini,
+# .dbgconf and .scvd. Do not ignore all .bin or .htm files by extension.
+
+# Personal IDE state and probe logs (including MDK-ARM/.vscode/).
+*.uvopt
+*.uvoptx
+*.uvgui.*
+*.uvguix.*
+.vscode/
+.vs/
+JLinkLog*.txt
+JLinkLog*.txt.*
+
+# Python caches and local virtual environments.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Editor backups, temporary files and OS metadata.
+*.bak
+*.tmp
+*.TMP
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini

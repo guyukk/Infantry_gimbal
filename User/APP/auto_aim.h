@@ -85,7 +85,6 @@ fp32 auto_aim_take_increment(uint8_t pitch);
 void auto_aim_rx_status(auto_aim_rx_status_t *out);
 
 extern void auto_aim_task(void const *pvParameters);
-extern void auto_aim_loop(auto_aim_t *aim_loop);
 extern void send_to_minipc(void);
 
 // Bridge: apply host delta in micro-degree (udeg)

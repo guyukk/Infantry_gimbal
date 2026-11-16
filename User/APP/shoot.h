@@ -19,8 +19,11 @@ typedef enum
 	SHOOT_CONTINUE_BULLET,
 } shoot_mode_e;
 
+#define SHOOT_FRICTION_PID_SPLIT 1
+
 typedef struct
 {
+  pid_type_def speed_pid; /* Owned by this wheel; never shared with its peer. */
   const dji_measure_t *shoot_motor_measure;
   fp32 accel;
   fp32 speed;
@@ -45,7 +48,6 @@ typedef struct
 	uint16_t fric_pwm2;
 	pid_type_def trigger_motor_angle_pid;
 	pid_type_def trigger_motor_speed_pid;
-	pid_type_def fric_motor_pid;
 	fp32 trigger_speed_set;
 	fp32 speed;
 	fp32 speed_set;

@@ -28,8 +28,6 @@
 
 shoot_control_t shoot_control;			//射击数据
 
-uint8_t shoot_mode_choose = 0;
-uint8_t shoot_mode_choose_flag = 0;
 
 fp32 continue_trigger_speed = CONTINUE_TRIGGER_SPEED;
 
@@ -43,7 +41,8 @@ void shoot_safety_reset(void)
     shoot_control.shoot_mode=SHOOT_STOP;
     PID_clear(&shoot_control.trigger_motor_angle_pid);
     PID_clear(&shoot_control.trigger_motor_speed_pid);
-    PID_clear(&shoot_control.fric_motor_pid);
+    PID_clear(&shoot_control.fric1.speed_pid);
+    PID_clear(&shoot_control.fric2.speed_pid);
     shoot_control.given_current=0;
     shoot_control.speed_set=shoot_control.trigger_speed_set=0.0f;
     shoot_control.fric1.speed_set=shoot_control.fric2.speed_set=0.0f;
@@ -71,31 +70,6 @@ int16_t shoot_control_loop(void)
         shoot_safety_reset();
         last_epoch=health_gate_epoch(HEALTH_GATE_SHOOT);
     }
-//	/*********************** 模式选择调试 ************************/
-//	//	typedef enum
-//	//	{
-//	//		SHOOT_STOP = 0,
-//	//		SHOOT_READY_FRIC,
-//	//		SHOOT_READY_BULLET,
-//	//		SHOOT_BULLET,
-//	//		SHOOT_CONTINUE_BULLET,
-//	//	} shoot_mode_e;
-//	
-//	if(shoot_mode_choose_flag == 1)
-//	{
-//		switch(shoot_mode_choose)
-//		{
-//			case(0):{ shoot_control.shoot_mode = SHOOT_STOP       		  ; break; }
-//			case(1):{ shoot_control.shoot_mode = SHOOT_READY_FRIC       ; break; }
-//			case(2):{ shoot_control.shoot_mode = SHOOT_READY_BULLET     ; break; }
-//			case(3):{ shoot_control.shoot_mode = SHOOT_BULLET           ; break; }
-//			case(4):{ shoot_control.shoot_mode = SHOOT_CONTINUE_BULLET  ; break; }
-//			default:{ shoot_control.shoot_mode = SHOOT_STOP       		  ; break; }
-//		}
-//		shoot_mode_choose_flag = 0;
-//	}
-//	/***********************************************************/
-	
 	shoot_set_mode();        //设置状态机	
 	shoot_feedback_update(); //更新数据
 	
@@ -153,30 +127,20 @@ int16_t shoot_control_loop(void)
 		shoot_control.shoot_time = HAL_GetTick();
 	}
 	
-	//计算摩擦轮电机的电流值
-	shoot_fric1_on(&shoot_control);
-	shoot_fric2_on(&shoot_control);
-	
-	//发送摩擦轮电机的电流值
-	if(shoot_control.fric1.shoot_motor_measure != NULL && shoot_control.fric2.shoot_motor_measure != NULL)
-	{
-		//过热保护，摩擦轮过烫时禁止运行摩擦轮
-		if(shoot_control.fric1.shoot_motor_measure->temperate < 80.0f && \
-			 shoot_control.fric2.shoot_motor_measure->temperate < 80.0f && \
-			 shoot_control.shoot_mode > SHOOT_STOP )
-		{
-				CAN_cmd_friction(shoot_control.fric1.give_current, shoot_control.fric2.give_current, 0, 0);
-		}
-		else
-		{
-			CAN_cmd_friction(0,0,0,0);
-		}
-	}
-	else
-	{
-		CAN_cmd_friction(0,0,0,0);
-	}
-	
+    /* One calculation per wheel and cycle. A stopped or overheated pair must
+       not integrate and then have its current overwritten downstream. */
+    if (shoot_control.shoot_mode > SHOOT_STOP &&
+        shoot_control.fric1.shoot_motor_measure != NULL &&
+        shoot_control.fric2.shoot_motor_measure != NULL &&
+        shoot_control.fric1.shoot_motor_measure->temperate < FRIC_OVER_TEMP_C &&
+        shoot_control.fric2.shoot_motor_measure->temperate < FRIC_OVER_TEMP_C)
+    {
+        shoot_fric1_on(&shoot_control);
+        shoot_fric2_on(&shoot_control);
+    }
+    else fric_off();
+    CAN_cmd_friction(shoot_control.fric1.give_current,shoot_control.fric2.give_current,0,0);
+
 	//拨弹盘的控制电流值
 	return shoot_control.given_current;
 }
