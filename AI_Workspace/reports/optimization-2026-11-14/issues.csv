@@ -17,4 +17,4 @@ P14,C+G,P2,S,参数/命名/编码/文档一致性,verified_software,B06,chassis-
 P15,C+G,P2,S,模块边界与实时性可观测,verified_software,B06,chassis-dev+gimbal-dev,B06按证据清理/参数与编码整理/Pitch双模块拆分/毫秒诊断入口；正常路径和冻结项对比、构建/回归通过；unknown保留；设备未验
 P16,C+G,P2,S, CubeMX/硬件未知/范围外设计,design_delivered,B07,lead,B07已交隔离CubeMX验证步骤、硬件未知及范围外设计；未重生成正式工程、未实施范围外功能或设备验收
 P17,G,P2,S,PID_POSITION积分正负误差非对称,pending_design,future,lead,真实PID只对正误差>0.05积分；本轮保持算法，独立评估/整定设计见B07
-P18,C,P1,S+H,小陀螺混合运动失真及坐标匹配,pending_device_diagnosis,future,lead,2026-11-16调查已交，未改算法；需实测yaw与目标/舵角误差；不作为本批已修复
+P18,C,P1,S+H,小陀螺混合运动失真及坐标匹配,software_fixed_pending_device,spin-fix,lead,2026-11-18同帧角度对与混合旋转预算已实施；新旧13组对照及6组运动学反馈通过；正式底盘0错误0警告；实车方向和跟踪仍待验收
